@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "无限画布",
+  "version": "0.1.0",
+  "identifier": "local.infinitecanvas.studio",
+  "build": { "frontendDist": "../dist", "beforeBuildCommand": "pnpm build" },
+  "app": { "windows": [], "security": { "csp": "default-src 'self'; img-src 'self' data:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://127.0.0.1:*" } },
+  "bundle": { "active": true, "targets": ["nsis"], "externalBin": ["binaries/canvas-backend"] }
+}

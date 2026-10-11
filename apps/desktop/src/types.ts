@@ -1,0 +1,38 @@
+import type { Node, Edge, Viewport } from '@xyflow/react';
+
+export type Config = { prompt?: string; model?: string; provider?: 'runninghub' | 'text' | 'comfyui'; workflowId?: string; textServiceId?: string; textModel?: string; seconds?: number; shotIndex?: number; selectedShot?: Shot; fps?: number; assetId?: string; referenceIds?: string[]; voiceStyle?: string; voiceAuthorized?: boolean; approved?: boolean; [key: string]: unknown };
+export type NodeData = { kind: string; title: string; config: Config; status?: string; output?: { text?: string; assets?: string[]; shots?: Shot[]; shot?: Shot; seconds?: number; characters?: CharacterDraft[]; locations?: LocationDraft[] }; error?: string; [key: string]: unknown };
+export type StudioNode = Node<NodeData, 'studio'>;
+export type StudioEdge = Edge<{ kind: 'data' | 'reference' | 'sequence' }>;
+export type CanvasGroup = { id: string; title: string };
+export type CanvasDoc = { nodes: StudioNode[]; edges: StudioEdge[]; groups?: CanvasGroup[]; viewport: Viewport; version: number };
+export type Definition = { displayName: string; inputs: Record<string, string>; outputs: Record<string, string>; version: number };
+export type Asset = { id: string; revisionId: string; projectId: string; name: string; mime: string; sha256: string; path: string; nodeId?: string; runId?: string; width?: number; height?: number; createdAt: number };
+export type Budget = { limit: string; currency: 'CNY' | 'USD' };
+export type Project = { id: string; name: string; settings: { cloudEnabled: boolean; budget?: Budget | null }; createdAt: number; version?: number };
+export type Task = { id: string; run_id: string; node_id: string; status: string; error?: string; error_code?: string; reused: boolean; external_id?: string; created_at: number; updated_at: number; snapshot: { config: Config; kind: string }; output: { text?: string; assets?: string[]; shots?: Shot[]; shot?: Shot; seconds?: number; characters?: CharacterDraft[]; locations?: LocationDraft[] } };
+export type Clip = { id: string; assetId: string; title: string; durationMs: number; inMs: number; startMs?: number; track?: 'V1' | 'V2' | 'A1' | 'A2'; gain?: number; fadeInMs?: number; fadeOutMs?: number; transform?: { x?: number; y?: number; width?: number; height?: number; fit?: 'contain' | 'cover'; opacity?: number }; approved?: boolean; muted?: boolean };
+export type Subtitle = { id: string; text: string; startMs: number; endMs: number };
+export type TimelineDoc = { clips: Clip[]; audio: Clip[]; subtitles: Subtitle[]; fps: number; width: number; height: number; durationMs?: number; version: number };
+export type LocationDraft = { name: string; description: string; layout?: string; restrictions?: string };
+export type CharacterDraft = { name: string; description: string; appearance?: string; wardrobe?: string; restrictions?: string };
+export type Profile = { id: string; sourceKey?: string; layout?: string; name: string; description: string; assetId?: string; referenceIds?: string[]; appearance?: string; wardrobe?: string; voice?: string; voiceAssetId?: string; voiceAuthorized?: boolean; restrictions?: string };
+export type Shot = { id?: string; title?: string; visualPrompt: string; dialogue?: string; durationMs: number; shotSize?: string; cameraMove?: string; status?: string; sceneId?: string; order?: number; characterRefs?: { id: string; revisionId: string }[]; locationRef?: { id: string; revisionId: string } };
+export type Episode = { id: string; name: string; script: string };
+export type Scene = { id: string; name: string; episodeId?: string; locationId?: string; script: string };
+export type PeopleDoc = { characters: Profile[]; locations: Profile[]; shots: Shot[]; episodes?: Episode[]; scenes?: Scene[]; version: number };
+export type Provider = { id: string; name: string; ready: boolean; models: string[]; pricing: null | number; requiresHealthCheck?: boolean };
+export type ExportJob = { id: string; status: string; preview?: boolean; inputHash?: string; error?: string; output?: { durationMs: number } };
+export type PriceRule = { amount: string; unit: 'task' | 'second'; currency: 'CNY' | 'USD' };
+export type TextService = { id: string; name: string; baseUrl: string; models: string[]; defaultModel: string; enabled: boolean; ready?: boolean };
+export type WorkflowMapping = { source: 'prompt' | 'image' | 'video' | 'audio' | 'seconds' | 'fps' | 'seed'; nodeId: string; fieldName: string; index?: number; required?: boolean };
+export type CloudWorkflow = { id: string; name: string; kinds: string[]; version: number; enabled: boolean; builtin?: string; workflow?: string | Record<string, { class_type: string; inputs: Record<string, unknown>; [key: string]: unknown }>; workflowId?: string; nodeInfoList?: { nodeId: string; fieldName: string; fieldValue: string | number | boolean }[]; mappings?: WorkflowMapping[]; resultNodes?: string[] };
+export type GenerationOptions = { workflows: CloudWorkflow[]; textServices: TextService[] };
+export type CredentialState = { configured: boolean; source: 'environment' | 'vault' | 'none' };
+export type AppSettings = { textApiBase: string; textModel: string; textServices: TextService[]; cloudWorkflows: CloudWorkflow[]; comfyUrl: string; comfyWorkflows: Record<string, unknown>; concurrency: Record<'media' | 'image' | 'video' | 'audio' | 'text', number>; pricing: Record<string, PriceRule>; vaultAvailable: boolean; credentials: Record<string, CredentialState> };
+export type CostQuote = { known: boolean; amount: string | null; currency: string | null; provider?: string; model?: string; basis?: string };
+export type CostEstimate = { totals: Record<string, string>; unknownCount: number; nodeIds: string[]; quotes: CostQuote[]; actual: null };
+export type CostSummary = { estimatedUsed: Record<string, string>; unknownCount: number; actual: null; reservations: { task_id: string; quote: CostQuote; status: string }[] };
+export type Diagnostics = { ffmpeg: boolean; diskFreeBytes: number; worker: boolean; comfyui: { ready: boolean; error?: string; nodeCount: number; devices: { name: string; vram_total?: number; vram_free?: number }[]; workflows: Record<string, { ready: boolean; error?: string }> } };
+
+export const STATUS: Record<string, string> = { idle: '未运行', dirty: '待重新生成', queued: '排队 / 等待云端', running: '正在生成', completed: '已完成', failed: '生成失败', cancelled: '已取消', cancel_requested: '正在取消', blocked: '上游未完成' };

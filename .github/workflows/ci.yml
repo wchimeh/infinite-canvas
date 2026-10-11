@@ -1,0 +1,56 @@
+name: Windows validation
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install locked dependencies and media tools
+        shell: pwsh
+        run: |
+          pnpm install --frozen-lockfile
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          uv sync --project services/backend --frozen
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          choco install ffmpeg --no-progress -y
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          'C:\ProgramData\chocolatey\bin' >> $env:GITHUB_PATH
+      - name: Type, syntax, backend and real media validation
+        run: pnpm verify
+      - name: Package embedded frontend and backend
+        shell: pwsh
+        run: ./scripts/package-sidecar.ps1
+      - name: Build Windows installer
+        run: pnpm --filter desktop tauri build
+      - name: Generate release manifest
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe).FullName
+          python scripts/release.py $installer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-unsigned
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+            .runtime/release/
+          if-no-files-found: error

@@ -1,0 +1,18 @@
+{
+  "name": "infinite-canvas",
+  "private": true,
+  "packageManager": "pnpm@10.24.0",
+  "scripts": {
+    "dev": "python scripts/dev.py",
+    "build": "pnpm --filter desktop build",
+    "typecheck": "pnpm --filter desktop typecheck",
+    "lint": "python scripts/check.py && pnpm typecheck",
+    "test": "uv run --project services/backend pytest services/backend/tests -q",
+    "verify": "pnpm lint && pnpm build && pnpm test",
+    "test:browser": "node scripts/smoke.mjs",
+    "test:performance": "node scripts/performance.mjs",
+    "test:desktop": "node scripts/desktop-smoke.mjs",
+    "release:manifest": "python scripts/release.py",
+    "desktop": "pnpm --filter desktop tauri dev"
+  }
+}
