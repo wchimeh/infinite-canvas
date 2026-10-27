@@ -24,6 +24,10 @@ def main():
     parser.add_argument("--data-dir", required=True)
     args = parser.parse_args()
     load_dotenv(Path.cwd() / ".env")
+    if getattr(sys, 'frozen', False) and not os.getenv('FFMPEG_DIR'):
+        media = Path(sys.executable).parent / 'media'
+        if (media / 'ffmpeg.exe').is_file() and (media / 'ffprobe.exe').is_file():
+            os.environ['FFMPEG_DIR'] = str(media)
     os.environ["CANVAS_DATA_DIR"] = args.data_dir
     os.environ["CANVAS_SESSION_TOKEN"] = secrets.token_urlsafe(32)
     # 预绑定并把同一 socket 交给 uvicorn，避免随机端口检查后被占用。
@@ -32,7 +36,7 @@ def main():
     sock.listen(128)
     port = sock.getsockname()[1]
     from app.main import create_app
-    app = create_app(args.data_dir, os.environ["CANVAS_SESSION_TOKEN"])
+    app = create_app(token=os.environ["CANVAS_SESSION_TOKEN"], default_root=args.data_dir)
     original = app.router.lifespan_context
     from contextlib import asynccontextmanager
     @asynccontextmanager

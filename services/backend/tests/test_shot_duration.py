@@ -48,3 +48,17 @@ def test_missing_shot_duration_rejected(tmp_path, monkeypatch):
     with pytest.raises(ProviderError) as error:
         generate_shots(tmp_path, monkeypatch, {'visualPrompt': '跳舞'})
     assert error.value.code == 'TEXT_GENERATION_FAILED'
+
+
+@pytest.mark.parametrize('field', ['title', 'dialogue', 'shotSize', 'cameraMove'])
+@pytest.mark.parametrize('value', [{'bad': 'object'}, ['array'], None, 12, True])
+def test_non_text_shot_fields_rejected(tmp_path, monkeypatch, field, value):
+    with pytest.raises(ProviderError) as error:
+        generate_shots(tmp_path, monkeypatch, {'visualPrompt': '跳舞', 'durationMs': 5000, field: value})
+    assert error.value.code == 'TEXT_GENERATION_FAILED'
+
+
+def test_optional_shot_text_fields_preserved(tmp_path, monkeypatch):
+    shot = {'visualPrompt': '跳舞', 'durationMs': 5000, 'title': '起舞', 'dialogue': '', 'shotSize': '全景', 'cameraMove': '固定'}
+    result, _ = generate_shots(tmp_path, monkeypatch, shot)
+    assert result['shots'] == [shot]

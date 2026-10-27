@@ -24,11 +24,14 @@ from app.providers import capabilities
 from app.store import Conflict, Store
 from app.worker import Worker
 from app.credentials import Settings
+from app.project_storage import ProjectStorage
+from app import directory_picker
 from app.generation_profiles import generation_options, validate_profiles
 from app.costs import BudgetLedger, money
 from app.comfy import ComfyUI
 from app.portable import export_project, import_project, export_template, import_template
 from app.timeline import normalize_timeline
+from app.text_result import edited_result
 
 REPO = Path(sys._MEIPASS) if getattr(sys, 'frozen', False) else Path(__file__).resolve().parents[3]
 
@@ -43,10 +46,18 @@ class RunRequest(BaseModel):
     force: bool = False
 
 
-def create_app(root=None, token=None, start_worker=True, settings=None):
-    store = Store(root or os.getenv("CANVAS_DATA_DIR") or REPO / "data")
+def create_app(root=None, token=None, start_worker=True, settings=None, default_root=None):
     session_token = token or os.getenv("CANVAS_SESSION_TOKEN") or secrets.token_urlsafe(32)
     application_settings = settings or Settings()
+    storage = ProjectStorage(application_settings.root)
+    storage_error = ''
+    data_root = root or default_root or os.getenv("CANVAS_DATA_DIR") or REPO / "data"
+    if root is None:
+        try:
+            data_root = storage.resolve(data_root)
+        except ValueError as exc:
+            storage_error = str(exc)
+    store = Store(data_root)
     worker = Worker(store, settings=application_settings)
     exports = ThreadPoolExecutor(max_workers=1, thread_name_prefix="canvas-export")
 
@@ -71,6 +82,9 @@ def create_app(root=None, token=None, start_worker=True, settings=None):
     app.state.store, app.state.worker = store, worker
     app.state.settings = application_settings
 
+    def host_allowed(host):
+        return host.split(":")[0] in ("127.0.0.1", "localhost", "testserver")
+
     def origin_allowed(origin, host):
         if not origin:
             return True
@@ -87,7 +101,7 @@ def create_app(root=None, token=None, start_worker=True, settings=None):
     @app.middleware("http")
     async def guard(request: Request, call_next):
         host = request.headers.get("host", "")
-        if host.split(":")[0] not in ("127.0.0.1", "localhost", "testserver"):
+        if not host_allowed(host):
             return error("INVALID_HOST", "只允许本机访问", 403)
         if not origin_allowed(request.headers.get("origin"), host):
             return error("INVALID_ORIGIN", "禁止跨站访问本地服务", 403)
@@ -159,6 +173,28 @@ def create_app(root=None, token=None, start_worker=True, settings=None):
     @app.get('/api/v1/settings')
     def get_settings():
         return application_settings.public()
+
+    @app.get('/api/v1/settings/storage')
+    def get_storage():
+        return {**storage.status(store.root, storage_error), 'directoryPickerAvailable': bool(directory_picker.executable())}
+
+    @app.post('/api/v1/settings/storage/browse')
+    def browse_storage(body: dict):
+        return {'directory': directory_picker.pick_directory(body.get('directory', ''))}
+
+    @app.put('/api/v1/settings/storage')
+    def save_storage(body: dict):
+        nonlocal storage_error
+        storage.save(body.get('directory'))
+        storage_error = ''
+        return storage.status(store.root)
+
+    @app.delete('/api/v1/settings/storage')
+    def cancel_storage_change():
+        nonlocal storage_error
+        storage.save(str(store.root))
+        storage_error = ''
+        return storage.status(store.root)
 
     @app.get('/api/v1/generation-options')
     def get_generation_options():
@@ -262,28 +298,39 @@ def create_app(root=None, token=None, start_worker=True, settings=None):
         return await asyncio.to_thread(store.add_asset, projectId, data, file.filename or "input.bin")
 
     @app.get("/api/v1/assets/{aid}/content")
-    def content(aid: str):
+    def content(aid: str, download: bool = False):
         asset = store.asset(aid)
-        return FileResponse(store.asset_path(aid), media_type=asset["mime"])
+        return FileResponse(store.asset_path(aid), media_type=asset["mime"], filename=asset['name'] if download else None)
 
     @app.get("/api/v1/assets/{aid}/thumbnail")
     def thumbnail(aid: str):
         import io
-        from PIL import Image
+        from PIL import Image, ImageOps
         from fastapi.responses import Response
         asset = store.asset(aid)
+        if asset["mime"].startswith("video/"):
+            from app.video_thumbnail import video_thumbnail
+            return Response(video_thumbnail(store.asset_path(aid)), media_type="image/jpeg",
+                            headers={"Cache-Control": "private, max-age=3600"})
         if not asset["mime"].startswith("image/"):
             raise ValueError("此素材无图片缩略图")
-        with Image.open(store.asset_path(aid)) as image:
-            image.thumbnail((480, 480))
-            out = io.BytesIO()
-            image.convert("RGB").save(out, "JPEG", quality=80)
+        with Image.open(store.asset_path(aid)) as source:
+            with ImageOps.exif_transpose(source) as image:
+                image.thumbnail((480, 480))
+                with image.convert("RGBA") as foreground, Image.new("RGB", image.size, "white") as preview:
+                    preview.paste(foreground, mask=foreground.getchannel("A"))
+                    out = io.BytesIO()
+                    preview.save(out, "JPEG", quality=80)
         return Response(out.getvalue(), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
 
     @app.delete("/api/v1/assets/{aid}")
     def delete_asset(aid: str):
         store.delete_asset(aid)
         return {"deleted": True}
+
+    @app.patch('/api/v1/assets/{aid}')
+    def rename_asset(aid: str, body: dict):
+        return store.rename_asset(aid, body.get('name'))
 
     @app.post("/api/v1/runs", status_code=202)
     def run(body: RunRequest):
@@ -304,6 +351,13 @@ def create_app(root=None, token=None, start_worker=True, settings=None):
     @app.post("/api/v1/tasks/{tid}/cancel")
     def cancel(tid: str):
         return store.cancel(tid)
+
+    @app.post('/api/v1/tasks/{tid}/text-preview')
+    def preview_text(tid: str, body: dict):
+        task = store.task(tid)
+        if task['status'] != 'completed' or not isinstance(task['output'].get('text'), str):
+            raise ValueError('只能编辑已完成的文本结果')
+        return edited_result(task['snapshot']['kind'], body.get('text'), task['output'])
 
     @app.post("/api/v1/tasks/{tid}/retry")
     def retry(tid: str, body: dict):
@@ -353,6 +407,8 @@ def create_app(root=None, token=None, start_worker=True, settings=None):
             raise ValueError('预览标志必须是布尔值')
         input_hash = snapshot_hash({k: v for k, v in normalize_timeline(timeline).items() if k != 'version'})
         if preview:
+            # 不复用旧的低分辨率预览或原尺寸居中、带黑框的旧布局。
+            input_hash = snapshot_hash({'timelineHash': input_hash, 'previewRenderer': 'full-resolution-resize-v2'})
             import json
             with store.db(pid) as con:
                 candidates = [json.loads(row[0]) for row in con.execute("SELECT body FROM documents WHERE key LIKE 'export:%'")]
@@ -391,7 +447,8 @@ def create_app(root=None, token=None, start_worker=True, settings=None):
 
     @app.websocket("/api/v1/events/ws")
     async def websocket(ws: WebSocket, projectId: str, lastEventId: int = 0):
-        if not origin_allowed(ws.headers.get("origin"), ws.headers.get("host", "")) or not authorized(ws.headers, ws.cookies):
+        host = ws.headers.get("host", "")
+        if not host_allowed(host) or not origin_allowed(ws.headers.get("origin"), host) or not authorized(ws.headers, ws.cookies):
             await ws.close(code=1008)
             return
         await ws.accept()

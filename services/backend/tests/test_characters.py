@@ -67,7 +67,8 @@ def test_character_three_views_prompt_and_cache(tmp_path, monkeypatch):
     run = worker.submit(p['id'], ['script']); worker.tick()
     task = next(t for t in store.run(run['id'])['tasks'] if t['node_id'] == 'script')
     config, inputs, key = worker.inputs(task)
-    for text in ['正面', '侧面', '背面', '同一张', '白色衬衫', '一个年轻小伙赚大钱的故事']:
+    for text in ['正面', '侧面', '背面', '同一张', '白色衬衫', '一个年轻小伙赚大钱的故事',
+                 '左侧约三分之二', '右侧约三分之一', '3–4', '面部', '发型', '服装材质', '配饰', '不得凭空添加']:
         assert text in config['prompt']
     assert worker.inputs(task)[0]['prompt'] == config['prompt']
     assert task['snapshot']['config']['prompt'] == '白色衬衫'
@@ -78,6 +79,11 @@ def test_character_three_views_prompt_and_cache(tmp_path, monkeypatch):
     from app.graph import snapshot_hash
     old_config = {**config, 'prompt': '一个年轻小伙赚大钱的故事\n\n白色衬衫'}
     assert snapshot_hash(old_config) != snapshot_hash(config)
+    legacy_suffix = ('\n\n输出要求：同一张横向角色三视图设定图，左侧正面、中间侧面、右侧背面。'
+                     '三个视角均为同一个角色，全身完整、自然站立、等比例、等高度、同一服装与发型，'
+                     '面部、体型、配饰和材质保持一致。纯色简洁背景，均匀光照，不裁切头脚，不添加文字、水印或多余人物。')
+    legacy = {**config, 'prompt': old_config['prompt'] + legacy_suffix}
+    assert snapshot_hash(legacy) != snapshot_hash(config)
     task['snapshot']['kind'] = 'image.generate'
     ordinary, _, _ = worker.inputs(task)
     assert ordinary['prompt'] == old_config['prompt']

@@ -14,11 +14,13 @@ def money(value):
 def quote_snapshot(snapshot, prices):
     kind, config = snapshot['kind'], snapshot.get('config', {})
     provider = config.get('provider', 'text' if kind in TEXT_KINDS else 'runninghub')
-    local = kind in ('story.prompt', 'shots.select') or kind.startswith('asset.') or kind.endswith('.reference') or snapshot.get('adopted') or provider == 'comfyui'
+    local = kind in ('story.prompt', 'shots.select', 'text.concat', 'frame.extract', 'audio.extract', 'audio.trim', 'video.trim') or kind.startswith('asset.') or kind.endswith('.reference') or snapshot.get('adopted') or provider == 'comfyui'
     if kind in TEXT_KINDS:
         model = snapshot.get('textModel') or ''
     elif kind == 'video.image_to_video':
         model = config.get('model', 'ltx23')
+    elif kind == 'video.combat':
+        model = 'minimax_h3_combat'
     elif kind == 'video.sound_effects':
         model = 'mmaudio'
     elif kind == 'audio.tts':
@@ -42,7 +44,7 @@ def quote_snapshot(snapshot, prices):
     try:
         amount = Decimal(str(rule['amount']))
         if rule['unit'] == 'second':
-            seconds = Decimal(str(config.get('seconds', 5)))
+            seconds = Decimal(str(config.get('seconds', 8 if kind == 'video.combat' else 5)))
             if not seconds.is_finite() or seconds <= 0:
                 raise ValueError('生成时长无效')
             amount *= seconds

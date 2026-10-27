@@ -37,7 +37,7 @@ def build_request(kind, config, inputs):
     captured = []
     token = _request_capture.set(captured)
     try:
-        if kind in ('image.generate', 'image.variation', 'image.character', 'image.location'):
+        if kind in ('image.generate', 'image.variation', 'image.character', 'image.location', 'image.prop'):
             if len(images) > 8:
                 raise ValueError('Image2.0 最多支持 8 张参考图')
             if not images:

@@ -4,10 +4,11 @@ import { readFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { requireQaSession } from './qa-session.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(path.join(root, 'apps/desktop/package.json'));
 const { chromium, expect } = require('@playwright/test');
-const { url } = JSON.parse(await readFile(process.env.CANVAS_SESSION_FILE || path.join(root, '.runtime/session.json'), 'utf8'));
+const { url } = await requireQaSession();
 await mkdir(path.join(root, '.runtime/qa'), { recursive: true });
 const browser = await chromium.launch({ headless: true, ...(process.env.TEST_BROWSER_PATH ? { executablePath: process.env.TEST_BROWSER_PATH } : {}) });
 const page = await browser.newPage({ viewport: { width: 1500, height: 960 } });
@@ -21,6 +22,15 @@ async function fitCanvas() {
   await page.waitForTimeout(350);
 }
 async function connect(source, output, target, input) {
+  // 新节点会围绕最近点击点放置；先实际拖开，避免遮住源端口后拖到节点正文。
+  const sourceBox = await source.boundingBox(), targetBox = await target.locator('header').boundingBox();
+  if (!sourceBox || !targetBox) throw new Error('节点不可见');
+  await page.mouse.move(targetBox.x + 40, targetBox.y + 15);
+  await page.mouse.down();
+  await page.mouse.move(sourceBox.x + sourceBox.width + 100, sourceBox.y + 15, { steps: 15 });
+  await page.mouse.up();
+  await fitCanvas();
+  await source.locator('header strong').click();
   const start = await source.locator(`.react-flow__handle.source[data-handleid="${output}"]`).boundingBox();
   const end = await target.locator(`.react-flow__handle.target[data-handleid="${input}"]`).boundingBox();
   if (!start || !end) throw new Error('节点端口不可见，无法执行实际拖线');
@@ -30,6 +40,7 @@ async function connect(source, output, target, input) {
   await page.mouse.up();
 }
 async function savedState() {
+  await expect(page.getByLabel('当前项目', { exact: true })).not.toHaveValue('');
   return page.evaluate(async () => {
     const id = document.querySelector('[aria-label="当前项目"]').value;
     const get = async path => {
@@ -162,7 +173,7 @@ try {
   await expect(page.locator('.profile-card')).toContainText('林夏');
 
   // 分组通过 Shift 实际多选，验证撤销/重做和持久化。
-  await node('故事 / 文本').locator('header strong').click();
+  await node('故事 / 文本').locator('header').click({ position: { x: 5, y: 5 } });
   await node('生成分镜图').locator('header strong').click({ modifiers: ['Shift'] });
   await page.getByRole('button', { name: '组合选中节点', exact: true }).click();
   await expect(page.locator('.canvas-group')).toHaveCount(1);
@@ -437,6 +448,9 @@ try {
   await expect(page.getByText('所选工作流已停用或不适用于当前节点。', { exact: true })).toBeVisible();
   if (errors.length) throw new Error(errors.join('\n'));
   console.log('PASS: 画布、分组、预算、ZIP/模板、时间线与合成预览；多文本服务/模型、工作流表单/导入、节点选择/重开、停用提示及窄窗口；无页面异常，未调用云端生成。');
+} catch (error) {
+  await page.screenshot({ path: path.join(root, '.runtime/qa/smoke-failure.png'), fullPage: true });
+  throw error;
 } finally {
   if (savedGenerationProfiles) await page.evaluate(async profiles => {
     const response = await fetch('/api/v1/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(profiles) });

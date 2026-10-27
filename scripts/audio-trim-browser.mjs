@@ -1,0 +1,58 @@
+import { createRequire } from 'node:module';
+import { mkdir } from 'node:fs/promises';
+import { requireQaSession } from './qa-session.mjs';
+const require = createRequire(new URL('../apps/desktop/package.json', import.meta.url));
+const { chromium, expect } = require('@playwright/test');
+const { url } = await requireQaSession();
+const browser = await chromium.launch();
+try {
+  const page = await browser.newPage({ viewport: { width: 1680, height: 1100 } });
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  await page.goto(url); await expect(page.locator('.app-shell')).toBeVisible();
+  await page.evaluate(async () => {
+    const opts = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const p = await (await fetch('/api/v1/projects', opts('POST', { name: 'Audio trim QA' }))).json();
+    const buffer = new ArrayBuffer(44 + 64000); const v = new DataView(buffer);
+    const text = (offset, value) => [...value].forEach((c, i) => v.setUint8(offset + i, c.charCodeAt(0)));
+    text(0, 'RIFF'); v.setUint32(4, 64036, true); text(8, 'WAVE'); text(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, 8000, true); v.setUint32(28, 16000, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    text(36, 'data'); v.setUint32(40, 64000, true);
+    for (let i = 0; i < 32000; i++) v.setInt16(44 + i * 2, Math.round(Math.sin(i * .3) * 8000), true);
+    const form = new FormData(); form.set('projectId', p.id); form.set('file', new Blob([buffer], { type: 'audio/wav' }), 'source.wav');
+    const asset = await (await fetch('/api/v1/assets/import', { method: 'POST', body: form })).json();
+    const c = await (await fetch(`/api/v1/canvases/${p.id}`)).json();
+    c.nodes = [{ id: 'source', type: 'studio', position: { x: 0, y: 0 }, data: { kind: 'asset.audio', title: 'Source', config: { assetId: asset.id } } },
+      { id: 'trim', type: 'studio', position: { x: 350, y: 0 }, data: { kind: 'audio.trim', title: 'Trim QA', config: {} } }];
+    c.edges = [{ id: 'audio', source: 'source', target: 'trim', sourceHandle: 'audio', targetHandle: 'audio' }];
+    const req = opts('PUT', c); req.headers['If-Match'] = String(c.version);
+    if (!(await fetch(`/api/v1/canvases/${p.id}`, req)).ok) throw new Error('fixture save failed');
+    localStorage.setItem('canvas-last-project', p.id);
+  });
+  await page.reload();
+  await expect(page.getByRole('button', { name: '音频裁剪', exact: true })).toBeVisible();
+  await page.locator('[data-id="trim"] header').click();
+  const field = name => page.locator('.inspector').getByLabel(name, { exact: true });
+  await expect(field('生成服务')).toHaveCount(0);
+  await expect(field('提示词')).toHaveCount(0);
+  await expect(field('开始时间（秒）')).toHaveValue('0');
+  await expect(field('结束时间（秒）')).toHaveValue('');
+  await field('开始时间（秒）').fill('1.25'); await field('结束时间（秒）').fill('1');
+  const run = page.locator('.inspector').getByRole('button', { name: '裁剪音频', exact: true }).first();
+  await expect(run).toBeDisabled();
+  await expect(page.getByRole('alert')).toContainText('结束时间必须大于开始时间');
+  await field('结束时间（秒）').fill('3.25');
+  await expect(page.getByText('截取时长：2 秒', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByText('项目已保存', { exact: true })).toBeVisible();
+  await page.reload(); await page.locator('[data-id="trim"] header').click();
+  await expect(field('开始时间（秒）')).toHaveValue('1.25');
+  await expect(field('结束时间（秒）')).toHaveValue('3.25');
+  await run.click();
+  await expect(page.locator('[data-id="trim"] audio')).toBeVisible({ timeout: 20000 });
+  await expect.poll(() => page.locator('[data-id="trim"] audio').evaluate(a => a.duration)).toBeCloseTo(2, 2);
+  await mkdir('.runtime/qa', { recursive: true });
+  await page.screenshot({ path: '.runtime/qa/audio-trim.png' });
+  expect(errors).toEqual([]);
+  console.log('PASS: trim node, time validation, persistence, local execution, playable two-second output');
+} finally { await browser.close(); }

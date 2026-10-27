@@ -8,13 +8,15 @@ from urllib.parse import urlparse
 
 from generate_tool.rh_generate_workflow import build_request
 from app.video_workflow import build_default_video_request
+from app.combat_video_workflow import build_combat_video_request
 
 TEXT_KINDS = ('script.expand', 'shots.extract', 'character.extract', 'location.extract', 'prompt.video_expand')
 MEDIA = ('image', 'video', 'audio')
-KINDS = {'image.generate', 'image.variation', 'image.character', 'image.location', 'video.image_to_video', 'video.sound_effects', 'audio.tts'}
+KINDS = {'image.generate', 'image.variation', 'image.character', 'image.location', 'image.prop', 'video.image_to_video', 'video.combat', 'video.sound_effects', 'audio.tts'}
 BUILTINS = [
-    {'id': 'builtin-minimax-h3', 'name': 'MiniMax H3 · 自动匹配参考数量', 'kinds': ['video.image_to_video'], 'builtin': 'minimax_h3', 'version': 1, 'enabled': True},
-    {'id': 'builtin-image2', 'name': 'Image2 · 自动匹配参考图', 'kinds': ['image.generate', 'image.variation', 'image.character', 'image.location'], 'builtin': 'image2', 'version': 1, 'enabled': True},
+    {'id': 'builtin-minimax-h3-combat', 'name': 'H3终极篇 · 文武05', 'kinds': ['video.combat'], 'builtin': 'minimax_h3_combat', 'version': 3, 'enabled': True},
+    {'id': 'builtin-minimax-h3', 'name': 'MiniMax H3 · 全能参考（动作迁移）', 'kinds': ['video.image_to_video'], 'builtin': 'minimax_h3', 'version': 2, 'enabled': True},
+    {'id': 'builtin-image2', 'name': 'Image2 · 自动匹配参考图', 'kinds': ['image.generate', 'image.variation', 'image.character', 'image.location', 'image.prop'], 'builtin': 'image2', 'version': 1, 'enabled': True},
     {'id': 'builtin-ltx23', 'name': 'LTX 2.3 · 图生视频', 'kinds': ['video.image_to_video'], 'builtin': 'ltx23', 'version': 1, 'enabled': True},
     {'id': 'builtin-wan22', 'name': 'Wan 2.2 · 图生视频', 'kinds': ['video.image_to_video'], 'builtin': 'wan22', 'version': 1, 'enabled': True},
 ]
@@ -55,8 +57,12 @@ def validate_profiles(data):
             if type(item.get('enabled')) is not bool:
                 raise ValueError('配置启用状态无效')
             if field == 'textServices':
-                if not item.keys() <= {'id', 'name', 'baseUrl', 'models', 'defaultModel', 'enabled'}:
+                if not item.keys() <= {'id', 'name', 'baseUrl', 'models', 'defaultModel', 'enabled', 'thinkingMode', 'stream'}:
                     raise ValueError('文本服务包含未知字段；密钥须单独保存')
+                if item.get('thinkingMode', 'default') not in ('default', 'on', 'off'):
+                    raise ValueError('思考模式必须为默认、开启或关闭')
+                if type(item.get('stream', False)) is not bool:
+                    raise ValueError('流式接收必须为布尔值')
                 validate_base(item.get('baseUrl'))
                 models = item.get('models')
                 if not isinstance(models, list) or not 1 <= len(models) <= 100:
@@ -88,7 +94,9 @@ def parse_workflow(value):
             raise ValueError('请使用 API 格式工作流，每个节点必须包含 inputs 和 class_type')
         string(node.get('class_type'), '节点 class_type', 200)
         for field, entry in node['inputs'].items():
-            if any(word in field.lower() for word in ('apikey', 'api_key', 'token', 'password', 'secret', 'authorization')):
+            attention_token_count = (node['class_type'] == 'BlockSparseAttention' and field in ('min_tokens', 'extra_tokens')
+                                     and type(entry) is int and entry >= 0)
+            if not attention_token_count and any(word in field.lower() for word in ('apikey', 'api_key', 'token', 'password', 'secret', 'authorization')):
                 raise ValueError('工作流中不能保存密钥字段')
             if isinstance(entry, list) and len(entry) == 2 and isinstance(entry[0], str) and type(entry[1]) is int:
                 if entry[0] not in value or entry[1] < 0:
@@ -148,10 +156,10 @@ def validate_workflow(item):
         if type(entry.get('index', 0)) is not int or not 0 <= entry.get('index', 0) < 9 or type(entry.get('required', True)) is not bool:
             raise ValueError('输入映射索引或必填状态无效')
         for kind in kinds:
-            limit = {'image': 9, 'video': 3, 'audio': 3}.get(entry['source'], 8) if kind == 'video.image_to_video' else 8
+            limit = {'image': 9, 'video': 3, 'audio': 3}.get(entry['source'], 8) if kind in ('video.image_to_video', 'video.combat') else 8
             if entry.get('index', 0) >= limit:
                 raise ValueError('输入映射索引超出该节点的参考素材上限')
-            accepted = set(MEDIA) if kind == 'video.image_to_video' else {'image'} if kind in ('image.generate', 'image.variation', 'image.character', 'image.location') else {'audio'} if kind == 'audio.tts' else {'video'}
+            accepted = set(MEDIA) if kind in ('video.image_to_video', 'video.combat') else {'image'} if kind in ('image.generate', 'image.variation', 'image.character', 'image.location', 'image.prop') else {'audio'} if kind == 'audio.tts' else {'video'}
             if entry['source'] in MEDIA and entry['source'] not in accepted:
                 raise ValueError('媒体映射与节点输入类型不兼容')
     if len(json.dumps(item)) > 1024 * 1024:
@@ -174,12 +182,15 @@ def resolve_selection(settings, kind, config):
         model = config.get('textModel') or service['defaultModel']
         if model not in service['models']:
             raise ValueError('所选模型不在该文本服务的模型列表中')
-        return {'textServiceId': sid, 'textCredential': 'text-' + sid, 'textEndpoint': service['baseUrl'], 'textModel': model}
+        return {'textServiceId': sid, 'textCredential': 'text-' + sid, 'textEndpoint': service['baseUrl'], 'textModel': model,
+                'textThinkingMode': service.get('thinkingMode', 'default'), 'textStream': service.get('stream', False)}
     wid = config.get('workflowId')
     if config.get('provider') == 'comfyui':
         return {}
     if kind == 'video.image_to_video' and not wid:
         wid = 'builtin-minimax-h3'
+    if kind == 'video.combat' and not wid:
+        wid = 'builtin-minimax-h3-combat'
     if not wid:
         return {}
     workflow = next((w for w in workflow_catalog(settings) if w['id'] == wid), None)
@@ -189,6 +200,8 @@ def resolve_selection(settings, kind, config):
 
 
 def build_workflow_request(kind, config, inputs, workflow=None):
+    if inputs.get('video_audio') and (workflow or {}).get('builtin') != 'minimax_h3':
+        raise ValueError('视频音频参考需要选择 MiniMax H3 全能参考（动作迁移）工作流')
     if not workflow:
         return build_request(kind, config, inputs)
     validate_workflow(workflow)
@@ -197,6 +210,10 @@ def build_workflow_request(kind, config, inputs, workflow=None):
     if kind == 'audio.tts' and inputs.get('audio') and not config.get('voiceAuthorized'):
         raise ValueError('使用参考声音前须确认已获得授权')
     if workflow.get('builtin'):
+        if workflow['builtin'] == 'minimax_h3_combat':
+            request = build_combat_video_request(config, inputs)
+            request['workflow'] = parse_workflow(request['workflow'])
+            return request
         if workflow['builtin'] == 'minimax_h3':
             request = build_default_video_request(config, inputs)
             request['workflow'] = parse_workflow(request['workflow'])

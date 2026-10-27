@@ -20,7 +20,7 @@ def profile(kind='image.generate'):
             'resultNodes': ['3']}
 
 
-@pytest.mark.parametrize('kind', ['image.generate', 'video.image_to_video'])
+@pytest.mark.parametrize('kind', ['image.generate', 'video.image_to_video', 'image.prop'])
 @pytest.mark.parametrize('as_string', [False, True])
 def test_full_submission_calls_script_preserves_graph_and_uploads(kind, as_string, monkeypatch):
     value = profile(kind)

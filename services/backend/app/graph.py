@@ -10,23 +10,30 @@ def definition(name, inputs, outputs):
 
 DEFINITIONS = {
     "story.prompt": definition("故事 / 文本", {}, {"text": "text"}),
+    "text.concat": definition("文本拼接", {"text" + (str(i) if i > 1 else ""): "text" for i in range(1, 11)}, {"text": "text"}),
     "script.expand": definition("剧本扩写", {"text": "text"}, {"text": "text"}),
     "shots.extract": definition("提取分镜", {"text": "text"}, {"text": "text"}),
     "shots.select": definition("分镜选择", {"text": "text"}, {"text": "text"}),
-    "prompt.video_expand": definition("视频提示词扩写", {"text": "text", "image": "image"}, {"text": "text"}),
+    "prompt.video_expand": definition("视频提示词扩写", {"text": "text", **{port + (str(i) if i > 1 else ""): port for port, count in [('image', 9), ('audio', 3), ('video', 3)] for i in range(1, count + 1)}}, {"text": "text"}),
     "character.extract": definition("提取角色", {"text": "text"}, {"text": "text"}),
-    "image.character": definition("生成角色图", {"text": "text", "image": "image"}, {"image": "image"}),
+    "image.character": definition("生成角色图", {"text": "text", **{"image" + (str(i) if i > 1 else ""): "image" for i in range(1, 9)}}, {"image": "image"}),
     "location.extract": definition("提取场景", {"text": "text"}, {"text": "text"}),
-    "image.location": definition("生成场景图", {"text": "text", "image": "image"}, {"image": "image"}),
+    "image.location": definition("生成场景图", {"text": "text", **{"image" + (str(i) if i > 1 else ""): "image" for i in range(1, 9)}}, {"image": "image"}),
+    "image.prop": definition("生成道具图", {"text": "text", **{"image" + (str(i) if i > 1 else ""): "image" for i in range(1, 9)}}, {"image": "image"}),
     "character.reference": definition("角色参考", {}, {"image": "image"}),
     "location.reference": definition("场景参考", {}, {"image": "image"}),
     "asset.image": definition("图片素材", {}, {"image": "image"}),
     "asset.video": definition("视频素材", {}, {"video": "video"}),
     "asset.audio": definition("音频素材", {}, {"audio": "audio"}),
-    "image.generate": definition("生成分镜图", {"text": "text", "image": "image"}, {"image": "image"}),
-    "image.variation": definition("参考图创作", {"text": "text", "image": "image"}, {"image": "image"}),
-    "video.image_to_video": definition("生成视频", {"text": "text", **{port + (str(i) if i > 1 else ''): port for port, limit in [('image', 9), ('video', 3), ('audio', 3)] for i in range(1, limit + 1)}}, {"video": "video"}),
+    "audio.extract": definition("提取视频音频", {"video": "video"}, {"audio": "audio"}),
+    "frame.extract": definition("提取视频帧", {"video": "video"}, {"image": "image"}),
+    "audio.trim": definition("音频裁剪", {"audio": "audio"}, {"audio": "audio"}),
+    "video.trim": definition("视频裁剪", {"video": "video"}, {"video": "video"}),
+    "image.generate": definition("生成分镜图", {"text": "text", **{"image" + (str(i) if i > 1 else ""): "image" for i in range(1, 9)}}, {"image": "image"}),
+    "image.variation": definition("参考图创作", {"text": "text", **{"image" + (str(i) if i > 1 else ""): "image" for i in range(1, 9)}}, {"image": "image"}),
+    "video.image_to_video": definition("生成视频", {"text": "text", **{port + (str(i) if i > 1 else ''): port for port, limit in [('image', 9), ('video', 3), ('audio', 3)] for i in range(1, limit + 1)}, **{'videoAudio' + (str(i) if i > 1 else ''): 'audio' for i in range(1, 4)}}, {"video": "video"}),
     "audio.tts": definition("对白 / 配音", {"text": "text", "audio": "audio"}, {"audio": "audio"}),
+    "video.combat": definition("生成视频-武打", {"text": "text", **{port + (str(i) if i > 1 else ''): port for port, limit in [('image', 9), ('audio', 3), ('video', 3)] for i in range(1, limit + 1)}}, {"video": "video"}),
     "video.sound_effects": definition("视频音效", {"text": "text", "video": "video"}, {"video": "video"}),
 }
 
@@ -53,6 +60,8 @@ def validate_graph(nodes, edges):
             errors.append("节点类型或参数结构无效")
             continue
         config = data.get('config', {})
+        if data.get('kind') == 'text.concat' and not isinstance(config.get('separator', '\n'), str):
+            errors.append("文本拼接分隔符必须是字符串")
         if not isinstance(config.get('prompt', ''), str) or not isinstance(config.get('referenceIds', []), list) or not all(isinstance(i, str) for i in config.get('referenceIds', [])):
             errors.append("提示词必须是文本，参考素材必须是 ID 数组")
         pos = n.get('position', {})

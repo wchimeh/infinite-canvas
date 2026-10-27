@@ -57,7 +57,7 @@ def test_real_multitrack_overlay_audio_and_preview(tmp_path):
     store = Store(tmp_path / 'projects')
     pid = store.create_project('Multi-track')['id']
     assets = [store.add_asset(pid, p.read_bytes(), p.name) for p in (blue, red, audio)]
-    timeline = {'width': 128, 'height': 128, 'fps': 30,
+    timeline = {'width': 128, 'height': 128, 'fps': 30, 'exportMode': 'timeline',
         'clips': [clip(id='blue', assetId=assets[0]['id'], durationMs=2000, muted=True),
                   clip(id='red', assetId=assets[1]['id'], startMs=1000, track='V2', inMs=500,
                        transform={'x': 32, 'y': 32, 'width': 64, 'height': 64}, muted=True)],

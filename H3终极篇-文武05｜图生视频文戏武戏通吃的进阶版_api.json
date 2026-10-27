@@ -1,0 +1,682 @@
+{
+  "14": {
+    "inputs": {
+      "audio": "None"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "Load Audio"
+    }
+  },
+  "15": {
+    "inputs": {
+      "audio": "None"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "Load Audio"
+    }
+  },
+  "19": {
+    "inputs": {
+      "image": "85c24b0e7cc20e526a36d5dc2224f2eea8251474c6e3fb856672424a4474095a.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "23": {
+    "inputs": {
+      "image": "8b3c098b0cedf321d938e93f5112f053899bbb82bd58baf2865d7f10dbc24741.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "25": {
+    "inputs": {
+      "video": "b5afe62a95bc91920b3b51f9ac5f08e06eb41305f47f5f35dd515894cef111aa.mp4",
+      "force_rate": 0,
+      "force_size": "Disabled",
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "AnimateDiff"
+    },
+    "class_type": "VHS_LoadVideo",
+    "_meta": {
+      "title": "Load Video (Upload) 🎥🅥🅗🅢"
+    }
+  },
+  "26": {
+    "inputs": {
+      "video": "3a82b3ef5efd46db42479604f1e72f249827b007180dacd3a46c625e43784984.mp4",
+      "force_rate": 0,
+      "force_size": "Disabled",
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "AnimateDiff"
+    },
+    "class_type": "VHS_LoadVideo",
+    "_meta": {
+      "title": "Load Video (Upload) 🎥🅥🅗🅢"
+    }
+  },
+  "27": {
+    "inputs": {
+      "video": "54fc711eadfe31152ae6d263f2e4fbc8e5671b2811ac7df0aef90aadf8b8da4f.mp4",
+      "force_rate": 0,
+      "force_size": "Disabled",
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "AnimateDiff"
+    },
+    "class_type": "VHS_LoadVideo",
+    "_meta": {
+      "title": "Load Video (Upload) 🎥🅥🅗🅢"
+    }
+  },
+  "36": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_int8_convrot.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "37": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "38": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_ultra_uncensored_heretic_int8_convrot.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "43": {
+    "inputs": {
+      "image": "ab8d7f4651283439437a787617051e111a09011ba9c9a86a7b17eb3d5e33e85b.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "48": {
+    "inputs": {
+      "audio": "9f99dc4d896259eaa5be6d4438e09f2b961b7b203a3b8d8265bf9fc316ca95b5.wav"
+    },
+    "class_type": "LoadAudio",
+    "_meta": {
+      "title": "Load Audio"
+    }
+  },
+  "49": {
+    "inputs": {
+      "image": "89b0f43572949d67b931af509ca6f6cf6220d4542cb359b951783418004f72e4.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "50": {
+    "inputs": {
+      "image": "c43ca31470889ae5e41c3994fb7231e1c0695a85971239222e5a2b39be29e781.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "51": {
+    "inputs": {
+      "image": "8e370a335310ea85302880c719a431f022bc6d8a6fae557451243e42a9af6114.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "53": {
+    "inputs": {
+      "lora_name": "minimax_h3_dmad_full_dareties_v4_step600_comfy_fro.safetensors",
+      "strength_model": 0.8000000000000002,
+      "model": [
+        "192",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "192": {
+    "inputs": {
+      "unet_name": "minimax_h3_hybrid_fl2va_ref2va_b25-49-int8.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "199": {
+    "inputs": {
+      "image": "1d07316883dc64fefd878e6343f9230297883106409951995ec2f00989f1e560.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "200": {
+    "inputs": {
+      "image": "5a2161e00e2df431f567a08022a8b19d7154d68f390e48f455adc1216aeb51f5.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "201": {
+    "inputs": {
+      "image": "334d647e3959eafb72e1caa0b0fa3ce87c72934356b5b4710de02cda372ee2e1.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "250": {
+    "inputs": {
+      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+      "values.a": [
+        "259",
+        0
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "252": {
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 0.5,
+      "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "分辨率选择器",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "253": {
+    "inputs": {
+      "samples": [
+        "397",
+        0
+      ],
+      "vae": [
+        "36",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.0"
+    }
+  },
+  "254": {
+    "inputs": {
+      "samples": [
+        "397",
+        0
+      ],
+      "vae": [
+        "37",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {
+      "title": "VAE Decode Audio"
+    }
+  },
+  "255": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "259": {
+    "inputs": {
+      "value": 8
+    },
+    "class_type": "PrimitiveFloat",
+    "_meta": {
+      "title": "视频时长（秒）",
+      "cnr_id": "comfy-core",
+      "ver": "0.30.1"
+    }
+  },
+  "261": {
+    "inputs": {
+      "scheduler": "beta",
+      "steps": 10,
+      "denoise": 1,
+      "model": [
+        "329",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "263": {
+    "inputs": {
+      "text": "subject_definitions:\n<Subject 1> is the panda character Er Er from <Picture 1>, a white, round-bodied cartoon figure with black ears and limbs, pink cheeks, and no eyebrows. He appears in the background but does not interact or speak.\n<Subject 2> is the bear character Bu Bu from <Picture 2>, a brown, chubby cartoon bear with small ears, orange cheeks, simple dot eyes, and explicitly no eyebrows. He is the main focus of this shot.\n<Subject 3> is the forest scene environment from <Picture 3>, featuring soft green grass, dappled sunlight, colorful flowers, and a large red-and-white spotted mushroom (Amanita style) growing on the ground.\n<Audio 1> is the voice-timbre reference for <Subject 2> (S1). It provides the vocal quality for the dialogue.\n\nsummary:\n[reference generation + audio reference] The target video features <Subject 2> in a close-up shot within <Subject 3>. <Subject 2> rubs his eyes sleepily, looks at a nearby mushroom with suspicion, and delivers a line of dialogue referencing <Audio 1> for timbre. <Subject 1> is visible in the periphery/background but remains passive. The art style is flat 2D animation.\n\nretention_analysis:\n<Subject 1>: fully_preserved - The visual identity of the panda is retained; he serves as a static background element without movement or expression changes.\n<Subject 2>: fully_preserved - The visual identity of the bear is retained. His lack of eyebrows is strictly enforced.\n<Subject 3>: partially_preserved - The specific lighting and floral details are adapted to fit a close-up composition focusing on the bear and the mushroom.\n<Audio 1>: reference - The voice timbre guides the delivery of <Subject 2>'s lines without copying the original signal directly.\n\ndetailed_description:\nThe target video uses a flat 2D anime style with cel shading, clean lines, and vibrant colors consistent with the reference sheets.\n[Shot 1] At 00:00.000, the camera frames a close-up of <Subject 2>, the brown bear. The background shows blurred elements of <Subject 3>, including green grass and flowers, and a hint of <Subject 1> standing further back. The large spotted mushroom is positioned clearly in the foreground relative to the bear's gaze.\nAt 00:00.500, <Subject 2> raises a paw to rub his eye slowly, blinking heavily, displaying a sleepy demeanor.\nAt 00:02.500, he lowers his paw and tilts his head to the side, fixing his gaze on the mushroom with an expression shifting from drowsiness to suspicion. The camera performs a very slight push-in (zoom) to emphasize his facial change.\nAt 00:04.000, <Subject 2> speaks. Using the voice timbre referenced from <Audio 1>, he says in a slow, groggy tone: <d>[Chinese] 嗯……可是那个蘑菇……好像有毒？</d>. He pauses slightly before the word \"poison\" (有毒).\nAt 00:07.500, the shot holds on his suspicious face until the end. No music plays throughout the clip.\n\noverall_soundscape:\nSoft ambient nature sounds, such as gentle wind and distant bird chirps, fill the silence between the dialogue.\n\nnon_diegetic_music:\nN/A"
+    },
+    "class_type": "Text",
+    "_meta": {
+      "title": "𝙆 Text"
+    }
+  },
+  "265": {
+    "inputs": {
+      "prompt": [
+        "263",
+        0
+      ],
+      "width": [
+        "252",
+        0
+      ],
+      "height": [
+        "252",
+        1
+      ],
+      "length": [
+        "250",
+        1
+      ],
+      "ref_image_size": "max",
+      "clip": [
+        "38",
+        0
+      ],
+      "vae": [
+        "36",
+        0
+      ],
+      "audio_vae": [
+        "37",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "51",
+        0
+      ],
+      "ref_images.ref_image_1": [
+        "49",
+        0
+      ],
+      "ref_images.ref_image_2": [
+        "50",
+        0
+      ],
+      "ref_images.ref_image_3": [
+        "43",
+        0
+      ],
+      "ref_images.ref_image_4": [
+        "19",
+        0
+      ],
+      "ref_images.ref_image_5": [
+        "23",
+        0
+      ],
+      "ref_images.ref_image_6": [
+        "199",
+        0
+      ],
+      "ref_videos.ref_video_0": [
+        "27",
+        0
+      ],
+      "ref_videos.ref_video_1": [
+        "25",
+        0
+      ],
+      "ref_videos.ref_video_2": [
+        "26",
+        0
+      ],
+      "ref_audios.ref_audio_0": [
+        "48",
+        0
+      ],
+      "ref_audios.ref_audio_1": [
+        "14",
+        0
+      ],
+      "ref_audios.ref_audio_2": [
+        "15",
+        0
+      ],
+      "ref_images.ref_image_7": [
+        "200",
+        0
+      ],
+      "ref_images.ref_image_8": [
+        "201",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {
+      "title": "MiniMax H3 Reference to Video"
+    }
+  },
+  "328": {
+    "inputs": {
+      "conditioning": [
+        "265",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "Conditioning Zero Out"
+    }
+  },
+  "329": {
+    "inputs": {
+      "max_resolution": 1024,
+      "jpeg_quality": 80,
+      "suppress_default_preview": true,
+      "preview_frames": 1024,
+      "preview_fps": 12,
+      "tiny_vae": "taeh3.safetensors",
+      "model": [
+        "333",
+        0
+      ],
+      "vae": [
+        "36",
+        0
+      ]
+    },
+    "class_type": "ModelPreviewOverrideKJ",
+    "_meta": {
+      "title": "Model Preview Override KJ"
+    }
+  },
+  "331": {
+    "inputs": {
+      "attention": "comfy kitchen attention",
+      "model": [
+        "343",
+        0
+      ]
+    },
+    "class_type": "ModelAttentionBackend",
+    "_meta": {
+      "title": "ModelAttentionBackend"
+    }
+  },
+  "332": {
+    "inputs": {
+      "selection": "sol-attn",
+      "selection.tau": 1.3,
+      "start_percent": 0.2,
+      "end_percent": 1,
+      "dense_blocks": "",
+      "min_tokens": 12288,
+      "extra_tokens": 256,
+      "sink_conditioning": "exact_kv_and_rows",
+      "verbose": true,
+      "model": [
+        "331",
+        0
+      ]
+    },
+    "class_type": "BlockSparseAttention",
+    "_meta": {
+      "title": "Model Sparse Attention"
+    }
+  },
+  "333": {
+    "inputs": {
+      "shift_video": 12,
+      "shift_audio": 3.0000000000000004,
+      "model": [
+        "332",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3SigmaShift",
+    "_meta": {
+      "title": "ModelSamplingMiniMaxH3"
+    }
+  },
+  "342": {
+    "inputs": {
+      "lora_name": "H3_Combat_V2.safetensors",
+      "strength_model": 0.6500000000000001,
+      "model": [
+        "400",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "343": {
+    "inputs": {
+      "lora_name": "H3_speed_slider_1.1.safetensors",
+      "strength_model": [
+        "366",
+        0
+      ],
+      "model": [
+        "345",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "344": {
+    "inputs": {
+      "lora_name": "Motion_Repair_V2.safetensors",
+      "strength_model": 0.3500000000000001,
+      "model": [
+        "342",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "345": {
+    "inputs": {
+      "lora_name": "H3_Fight_Flow_V1.safetensors",
+      "strength_model": 0.3500000000000001,
+      "model": [
+        "344",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  },
+  "364": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "YZ_H3_",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "no_preview": false,
+      "images": [
+        "253",
+        0
+      ],
+      "audio": [
+        "254",
+        0
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine 🎥🅥🅗🅢"
+    }
+  },
+  "366": {
+    "inputs": {
+      "值": 2,
+      "output_type": "int",
+      "ghs_dom": "2"
+    },
+    "class_type": "GoohaiUniversalSlider",
+    "_meta": {
+      "title": "速度滑块（-10 - +10）"
+    }
+  },
+  "397": {
+    "inputs": {
+      "seed": 413319638813310,
+      "cfg": 1,
+      "transition_step": 6,
+      "lowres_scale": 0.6000000000000001,
+      "rho": 0,
+      "w_min": 0.5,
+      "w_max": 1,
+      "upscaler_model": "h3_upscaler_lms_v0.1.safetensors",
+      "highres_tiling": true,
+      "upscaler_unload": true,
+      "model": [
+        "329",
+        0
+      ],
+      "positive": [
+        "265",
+        0
+      ],
+      "negative": [
+        "328",
+        0
+      ],
+      "vae": [
+        "36",
+        0
+      ],
+      "latent_image": [
+        "265",
+        1
+      ],
+      "sampler": [
+        "255",
+        0
+      ],
+      "sigmas": [
+        "261",
+        0
+      ]
+    },
+    "class_type": "SelfLiftH3Sampler",
+    "_meta": {
+      "title": "SelfLift Progressive Sampler (MiniMax H3)"
+    }
+  },
+  "400": {
+    "inputs": {
+      "lora_name": "MysticXXX_MMH3-V1.safetensors",
+      "strength_model": 0.45000000000000007,
+      "model": [
+        "53",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load LoRA"
+    }
+  }
+}

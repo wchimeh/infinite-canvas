@@ -1,5 +1,6 @@
 import json
 import io
+import hashlib
 
 import httpx
 import pytest
@@ -124,6 +125,18 @@ def test_expansion_uses_reference_guide_and_checks_sections(tmp_path, monkeypatc
     assert 'Preserve intentional gaze avoidance' in system
     assert 'remove optional gestures and extra cuts first' in system
     assert 'silently check gaze targets' in system
+    assert 'before the door moves' in system
+    assert 'which hand or shoulder supports it' in system
+    assert 'Do not invent an automatic door' in system
+    assert 'One hand moves only the leaf it contacts' in system
+    assert 'the untouched leaf remains in its' in system
+    assert 'two available hands contacting separate leaves' in system
+    assert 'explicit sequential contact with each leaf' in system
+    assert 'Preserve the reference door type' in system
+    assert 'cue -> orient eyes/head -> acquire line of sight ->' in system
+    assert 'does not establish' in system and "entrant's identity" in system
+    assert 'never to the person' in system
+    assert 'Speaker IDs follow actual speaking order, not picture numbering' in system
 
 
 def test_expansion_images_order_and_duration_reach_request(tmp_path, monkeypatch):
@@ -138,6 +151,7 @@ def test_expansion_images_order_and_duration_reach_request(tmp_path, monkeypatch
         data = io.BytesIO(); Image.new('RGB', (8, 8), color).save(data, format='PNG'); images.append(data.getvalue())
     result = TextProvider(settings=worker.settings).generate('prompt.video_expand', '两个人相遇', seconds=8, images=images)
     assert result['seconds'] == 8
+    assert result['referenceImageHashes'] == [hashlib.sha256(image).hexdigest() for image in images]
     content = requests[0]['messages'][1]['content']
     assert '8 seconds' in content[0]['text']
     assert '<Picture 1>' in content[1]['text'] and '<Picture 2>' in content[3]['text']
@@ -145,12 +159,42 @@ def test_expansion_images_order_and_duration_reach_request(tmp_path, monkeypatch
     assert content[2]['image_url']['url'] != content[4]['image_url']['url']
 
 
+@pytest.mark.parametrize('order', [[0, 1], [1, 0], [0], [0, 1, 0], []])
+def test_video_checks_expansion_reference_order_before_submission(tmp_path, monkeypatch, order):
+    store, project, worker = setup(tmp_path, monkeypatch)
+    pid = project['id']
+    assets = []
+    for color in ('red', 'blue'):
+        data = io.BytesIO()
+        Image.new('RGB', (8, 8), color).save(data, format='PNG')
+        assets.append(store.add_asset(pid, data.getvalue(), color + '.png'))
+    canvas = store.canvas(pid)
+    canvas['nodes'][1]['data'].update(kind='video.image_to_video', config={'referenceIds': [a['id'] for a in assets]})
+    store.save_canvas(pid, canvas, canvas['version'])
+    run = worker.submit(pid, ['script'])
+    tasks = store.run(run['id'])['tasks']
+    source = next(t for t in tasks if t['node_id'] == 'story')
+    target = next(t for t in tasks if t['node_id'] == 'script')
+    store.update_task(source['id'], status='completed', output={'text': REWRITE,
+                      'referenceImageHashes': [assets[i]['sha256'] for i in order]})
+    if order in ([0, 1], []):
+        config, inputs, _ = worker.inputs(target)
+        assert len(inputs['image']) == 2
+    else:
+        with pytest.raises(ProviderError) as error:
+            worker.inputs(target)
+        assert error.value.code == 'REFERENCE_MISMATCH'
+        assert store.task(target['id'])['submitted'] == 0
+        # Already submitted jobs must still be able to fetch their results.
+        worker.inputs({**target, 'external_id': 'existing-cloud-task'})
+
+
 def test_expansion_executes_in_text_queue_then_video_inherits_duration(tmp_path, monkeypatch):
     store, project, worker = setup(tmp_path, monkeypatch)
     pid = project['id']; canvas = store.canvas(pid)
     canvas['nodes'][1]['data'].update(kind='prompt.video_expand', config={'seconds': 5})
     canvas['nodes'].append({'id': 'video', 'type': 'studio', 'position': {'x': 600, 'y': 0},
-                            'data': {'kind': 'video.image_to_video', 'config': {'seconds': 5}}})
+                            'data': {'kind': 'video.image_to_video', 'config': {}}})
     canvas['edges'].append({'id': 'video', 'source': 'script', 'target': 'video',
                            'sourceHandle': 'text', 'targetHandle': 'text', 'data': {'kind': 'data'}})
     store.save_canvas(pid, canvas, canvas['version'])
@@ -170,6 +214,27 @@ def test_expansion_executes_in_text_queue_then_video_inherits_duration(tmp_path,
     video = next(t for t in store.run(run['id'])['tasks'] if t['node_id'] == 'video')
     config, _, _ = worker.inputs(video)
     assert config['seconds'] == 8 and config['prompt'] == REWRITE
+
+
+@pytest.mark.parametrize('mode,expected', [(None, 10), ('manual', 10), ('upstream', 5)])
+def test_video_duration_explicit_value_wins_over_upstream(tmp_path, monkeypatch, mode, expected):
+    from app.generation_profiles import build_workflow_request
+    store, project, worker = setup(tmp_path, monkeypatch)
+    canvas = store.canvas(project['id'])
+    cfg = {'seconds': 10}
+    if mode:
+        cfg['durationSource'] = mode
+    canvas['nodes'][1]['data'].update(kind='video.image_to_video', config=cfg)
+    store.save_canvas(project['id'], canvas, canvas['version'])
+    run = worker.submit(project['id'], ['script'])
+    source, target = [next(t for t in store.run(run['id'])['tasks'] if t['node_id'] == id) for id in ['story', 'script']]
+    store.update_task(source['id'], status='completed', output={'text': 'scene', 'seconds': 5})
+    config, _, key = worker.inputs(target)
+    assert config['seconds'] == expected
+    request = build_workflow_request('video.image_to_video', config, {'image': [b'reference']}, target['snapshot']['cloudWorkflow'])
+    assert next(item['fieldValue'] for item in request['user_data'] if item['nodeId'] == '132') == expected
+    target['snapshot']['config'] = {**cfg, 'seconds': 5, 'durationSource': 'manual'}
+    assert key != worker.inputs(target)[2]
 
 
 def test_performance_rules_invalidate_only_expansion_cache(tmp_path, monkeypatch):

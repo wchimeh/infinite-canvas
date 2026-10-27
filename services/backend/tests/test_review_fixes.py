@@ -103,10 +103,10 @@ def test_timeout_retry_persists_new_window_without_resubmission(tmp_path):
     worker.provider = Remote()
     worker.tick()
     assert store.task(tid)['error_code'] == 'TASK_TIMEOUT'
-    assert not calls
+    assert calls == ['remote']
     worker.retry(tid)
     worker.tick()
-    assert calls == ['remote']
+    assert calls == ['remote', 'remote']
     first = store.task(tid)
     assert first['deadline_at'] > time.time() + 7100
     restarted = Worker(Store(store.root), mock=True, settings=worker.settings)
@@ -121,7 +121,7 @@ def test_timeout_retry_persists_new_window_without_resubmission(tmp_path):
     store.update_task(tid, next_poll=0, deadline_at=time.time() - 1)
     restarted.tick()
     assert store.task(tid)['error_code'] == 'TASK_TIMEOUT'
-    assert calls == ['remote', 'remote']
+    assert calls == ['remote', 'remote', 'remote', 'remote']
 
 
 def test_new_submission_starts_window_after_queue_wait(tmp_path):

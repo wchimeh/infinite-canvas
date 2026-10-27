@@ -138,6 +138,24 @@ class Store:
         with self.db(pid) as con:
             return [json.loads(r[0]) for r in con.execute("SELECT body FROM assets WHERE deleted=0 ORDER BY rowid DESC")]
 
+    def rename_asset(self, aid, name):
+        if not isinstance(name, str):
+            raise ValueError('素材名称必须为文本')
+        name = name.strip()
+        if not name or len(name) > 200:
+            raise ValueError('素材名称须为 1–200 个字符')
+        if any(ord(char) < 32 or ord(char) == 127 or char in '\\/:*?"<>|' for char in name):
+            raise ValueError('素材名称不能包含换行或 \\ / : * ? " < > | 等字符')
+        with self.db(aid) as con:
+            con.execute('BEGIN IMMEDIATE')
+            row = con.execute('SELECT body FROM assets WHERE id=? AND deleted=0', (aid,)).fetchone()
+            if row is None:
+                raise ValueError('素材不存在或已移除')
+            asset = json.loads(row[0])
+            asset['name'] = name
+            con.execute('UPDATE assets SET body=? WHERE id=? AND deleted=0', (encode(asset), aid))
+        return asset
+
     def add_asset(self, pid, data, filename, node_id=None, run_id=None):
         self.document(pid, "project")
         if not data or len(data) > 512 * 1024 * 1024:
@@ -260,7 +278,12 @@ class Store:
 
     def tasks(self, pid):
         with self.db(pid) as con:
-            return [self.task_row(r) for r in con.execute("SELECT * FROM tasks ORDER BY created_at DESC LIMIT 200")]
+            return [self.task_row(r) for r in con.execute("""
+                SELECT * FROM tasks
+                WHERE status IN ('queued', 'running', 'cancel_requested')
+                   OR id IN (SELECT id FROM tasks ORDER BY created_at DESC, id DESC LIMIT 200)
+                ORDER BY created_at DESC, id DESC
+            """)]
 
     def run(self, rid):
         with self.db(rid) as con:
@@ -297,7 +320,7 @@ class Store:
     @staticmethod
     def modality(snapshot):
         kind = snapshot['kind']
-        if kind in ('story.prompt', 'shots.select') or kind.startswith('asset.') or kind.endswith('.reference') or snapshot.get('adopted'):
+        if kind in ('story.prompt', 'shots.select', 'text.concat', 'frame.extract', 'audio.extract', 'audio.trim', 'video.trim') or kind.startswith('asset.') or kind.endswith('.reference') or snapshot.get('adopted'):
             return 'local'
         return 'video' if kind.startswith('video.') else 'audio' if kind.startswith('audio.') else 'image' if kind.startswith('image.') else 'text'
 

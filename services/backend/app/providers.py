@@ -1,5 +1,6 @@
 """云服务适配；不向前端暴露凭据或上游原始错误体。"""
 import io
+import hashlib
 import base64
 import json
 import os
@@ -12,8 +13,10 @@ from PIL import Image, ImageDraw
 from generate_tool.rh_generate_workflow import build_request
 from generate_tool import rh_process_generate
 from app.credentials import Settings
+from app.text_transport import receive_text, TextTransportError
+from app.expansion_media import media_content
 from app.generation_profiles import build_workflow_request, generation_options
-from app.shot_nodes import expansion_instruction, validate_expansion, validate_expansion_inputs
+from app.shot_nodes import expansion_instruction, validate_expansion, validate_expansion_inputs, validate_timing_budget
 
 
 class ProviderError(Exception):
@@ -106,7 +109,11 @@ class RunningHub:
         return status
 
     def fetch(self, external_id, kind, config, inputs):
-        result_nodes = build_workflow_request(kind, config, inputs, config.get('_workflow'))["result_node"]
+        workflow = config.get('_workflow') or {}
+        # v1 快照可能已提交旧图（271），也可能升级后才提交新图（92）。
+        # 仅恢复原任务的结果，不因模板升级重新生成。
+        result_nodes = (['271', '92'] if workflow.get('builtin') == 'minimax_h3' and workflow.get('version') == 1
+                        else build_workflow_request(kind, config, inputs, config.get('_workflow'))['result_node'])
         records = self.request("outputs", {"taskId": external_id})
         if not isinstance(records, list):
             raise ProviderError("PROVIDER_MALFORMED", "云端输出格式错误")
@@ -132,6 +139,11 @@ class RunningHub:
                             raise ProviderError("ASSET_TOO_LARGE", "云端素材超过 512 MB")
                         chunks.append(chunk)
                 results.append((b"".join(chunks), f"{external_id}.{ext}"))
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                if status in (408, 429) or status >= 500:
+                    raise ProviderError('PROVIDER_UNAVAILABLE', '生成成功，素材下载服务暂不可用，等待自动重试', True) from exc
+                raise ProviderError('ASSET_DOWNLOAD_REJECTED', f'生成成功，但素材下载被拒绝（HTTP {status}）；请检查云端结果后重试下载') from exc
             except httpx.HTTPError as exc:
                 raise ProviderError("PROVIDER_NETWORK", "生成成功，但下载素材失败，可重试下载", True) from exc
         if not results:
@@ -140,14 +152,14 @@ class RunningHub:
 
 
 class TextProvider:
-    version = "text-7"
+    version = "text-9"
 
     def __init__(self, settings=None, base=None, model=None, credential='text'):
         self.settings = settings or Settings()
         self.base, self.model = base, model
         self.credential = credential
 
-    def generate(self, kind, prompt, *, seconds=5, images=None):
+    def generate(self, kind, prompt, *, seconds=5, images=None, audios=None, videos=None, thinking_mode="default", stream=False):
         if not isinstance(prompt, str) or not prompt.strip():
             raise ProviderError('EMPTY_TEXT_INPUT', '没有可生成的文本，请在上游故事节点填写内容，或在当前节点填写提示词后重新运行')
         config = self.settings.load()
@@ -161,8 +173,12 @@ class TextProvider:
                        "如果只有一句话，围绕核心创意合理补全角色、背景、情节和结局，不要要求用户先提供完整故事、角色或对白。"
                        "已有的人物设定和情节应保留，遵守用户补充的篇幅、风格等要求。只输出剧本正文，不输出索要素材的说明。")
         if kind == "shots.extract":
-            instruction = ('将用户提供的故事、简短梗概或完整剧本直接拆分为 3–5 个连贯分镜。'
+            instruction = ('将用户提供的故事、简短梗概或完整剧本按实际内容拆分为1–50个连贯且可单独拍摄的分镜，不为凑固定数量压缩剧情。'
                            '每条分镜时长必须为 4–15 秒，动作和对白必须能在该时长内完成。'
+                           '先估算对白再安排动作：正常中文约每秒4字、日语约每秒5个书写字符、英语每秒2.5词，情绪停顿和反应另留时间，慢节奏应减少动作。'
+                           '每镜一个主要动作或交流节拍；发现障碍、避让碰撞、落地稳定、捡拾物品、后续交谈通常需拆开，不要全部塞入一个短镜头。'
+                           '明确人物起始位置、可见或可听触发、接触后的物体运动、动作结束状态；上一镜结束状态衔接下一镜起点。'
+                           '对白太长时按原文自然句界分到相邻镜头，保留说话人及顺序，不遗漏或改写；不能靠加速说话或同时执行所有动作凑时长。'
                            '简短梗概也足够，请合理补全画面动作，不要追问用户提供完整剧本。'
                            '保留已有角色、情节和对白；没有对白时 dialogue 使用空字符串。'
                            '只返回 JSON 数组，不加说明或代码围栏；每项含 title、visualPrompt、dialogue（字符串）、'
@@ -179,8 +195,10 @@ class TextProvider:
                            'layout（空间结构、门窗、建筑和主要道具位置）、restrictions（需避免的环境元素），'
                            '字段全部是字符串，未指定用空字符串。只写环境，不把人物外貌当作场景。')
         if kind == 'prompt.video_expand':
+            # Audio belongs exclusively to video generation, including legacy callers.
+            audios = []
             try:
-                validate_expansion_inputs(seconds, images or [])
+                validate_expansion_inputs(seconds, images or [], audios, videos)
             except ValueError as exc:
                 raise ProviderError('INVALID_INPUT', str(exc)) from exc
             try:
@@ -188,11 +206,14 @@ class TextProvider:
             except OSError as exc:
                 raise ProviderError('MODEL_UNAVAILABLE', '视频提示词规范 ref-en.txt 无法读取，请检查安装文件') from exc
             prompt += f'\n\nTarget duration: {seconds:g} seconds. Fit all actions and dialogue within this duration.'
+            prompt += (f'\nSupplied audio references: {len(audios or [])}. Supplied video references: {len(videos or [])}. '
+                       'Only describe sound you can actually access. Without supplied audio, preserve explicit user-requested future audio bindings, '
+                       'but do not invent heard voice qualities or transcribe nonexistent audio. Keep explicitly supplied dialogue verbatim.')
         user_content = prompt
         try:
-            if kind == 'prompt.video_expand' and images:
+            if kind == 'prompt.video_expand' and (images or audios or videos):
                 user_content = [{'type': 'text', 'text': prompt}]
-                for index, data in enumerate(images):
+                for index, data in enumerate(images or []):
                     with Image.open(io.BytesIO(data)) as reference:
                         reference.thumbnail((2048, 2048))
                         output = io.BytesIO()
@@ -200,23 +221,28 @@ class TextProvider:
                     encoded = base64.b64encode(output.getvalue()).decode('ascii')
                     user_content.extend([{'type': 'text', 'text': f'<Picture {index + 1}> (reference image {index + 1})'},
                                          {'type': 'image_url', 'image_url': {'url': 'data:image/jpeg;base64,' + encoded}}])
-            with httpx.Client(timeout=120) as client:
-                response = client.post(base.rstrip("/") + "/chat/completions", headers={"Authorization": "Bearer " + key}, json={"model": model, "messages": [{"role": "system", "content": instruction}, {"role": "user", "content": user_content}]})
-                if response.status_code in (401, 403):
-                    raise ProviderError('PROVIDER_AUTH', '文本服务身份验证失败，请检查此服务的密钥和模型权限后重试')
-                if response.status_code == 404:
-                    raise ProviderError('MODEL_UNAVAILABLE', '文本服务地址或模型不存在，请修正配置后重新运行节点')
-                if response.status_code == 429:
-                    raise ProviderError('PROVIDER_RATE_LIMIT', '文本服务限流，请稍后手动重试', True)
-                if response.status_code in (400, 405, 422):
-                    raise ProviderError('PROVIDER_REJECTED', f'文本服务拒绝请求（HTTP {response.status_code}），请检查地址、模型及输入后重新运行节点')
-                response.raise_for_status()
-                text = response.json()["choices"][0]["message"]["content"]
+                try:
+                    user_content.extend(media_content(audios or [], videos or []))
+                except ValueError as exc:
+                    raise ProviderError('INVALID_REFERENCE_MEDIA', str(exc)) from exc
+            payload = {"model": model, "messages": [{"role": "system", "content": instruction}, {"role": "user", "content": user_content}]}
+            if thinking_mode not in ('default', 'on', 'off') or type(stream) is not bool:
+                raise ProviderError('INVALID_INPUT', 'Invalid text transport options')
+            if thinking_mode != 'default':
+                payload['enable_thinking'] = thinking_mode == 'on'
+            with httpx.Client(timeout=httpx.Timeout(120, connect=15)) as client:
+                text = receive_text(client, base.rstrip('/') + '/chat/completions',
+                                    {"Authorization": "Bearer " + key}, payload, stream)
             if not isinstance(text, str) or not text.strip():
                 raise ValueError("empty")
             if kind == 'prompt.video_expand':
                 try:
-                    return {'text': validate_expansion(text), 'seconds': seconds}
+                    validate_timing_budget(text, seconds)
+                except ValueError as exc:
+                    raise ProviderError('TIMING_BUDGET_EXCEEDED', str(exc)) from exc
+                try:
+                    return {'text': validate_expansion(text), 'seconds': seconds,
+                            **({'referenceImageHashes': [hashlib.sha256(data).hexdigest() for data in images]} if images else {})}
                 except ValueError as exc:
                     raise ProviderError('TEXT_FORMAT_INVALID', '扩写结果未按参考规范返回六段内容，请重新扩写') from exc
             if kind in ('character.extract', 'location.extract'):
@@ -253,8 +279,14 @@ class TextProvider:
                     if (not isinstance(shot, dict) or not isinstance(shot.get("visualPrompt"), str)
                             or type(shot.get("durationMs")) is not int or not 4000 <= shot["durationMs"] <= 15000):
                         raise ValueError("shot schema")
+                    if any(not isinstance(shot.get(field, ''), str) for field in ('title', 'dialogue', 'shotSize', 'cameraMove')):
+                        raise ValueError("shot text field")
                 return {"text": encode_text(shots), "shots": shots}
             return {"text": text}
+        except TextTransportError as exc:
+            if (audios or videos) and exc.code == 'PROVIDER_REJECTED':
+                raise ProviderError(exc.code, '文本服务拒绝音视频参考，请选择支持 input_audio / video_url 的多模态模型，并检查服务商的素材数量、大小和思考模式限制；参考素材未被忽略') from exc
+            raise ProviderError(exc.code, str(exc)) from exc
         except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError) as exc:
             raise ProviderError("TEXT_GENERATION_FAILED", "文本服务请求失败或返回内容不符合格式；请检查配置后重试") from exc
 

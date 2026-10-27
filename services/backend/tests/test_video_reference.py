@@ -85,7 +85,7 @@ def test_new_video_generation_never_falls_back_to_legacy_models(config):
     assert resolve_selection(settings, 'video.image_to_video', {'provider': 'comfyui'}) == {}
 
 
-def test_worker_uses_default_and_rejects_missing_images_before_provider(tmp_path, monkeypatch):
+def test_worker_uses_default_and_rejects_missing_references_before_provider(tmp_path, monkeypatch):
     store, project, worker = setup(tmp_path, monkeypatch)
     canvas = store.canvas(project['id']); canvas['nodes'][1]['data']['kind'] = 'video.image_to_video'
     store.save_canvas(project['id'], canvas, canvas['version'])
@@ -95,7 +95,7 @@ def test_worker_uses_default_and_rejects_missing_images_before_provider(tmp_path
     worker.tick(); worker.tick()
     target = store.task(target['id'])
     assert target['status'] == 'failed' and target['submitted'] == 0
-    assert '1–9' in target['error']
+    assert '至少需要一个' in target['error']
 
 
 @pytest.mark.parametrize('extra_reference', [False, True])

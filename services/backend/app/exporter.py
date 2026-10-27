@@ -1,7 +1,7 @@
-"""不可变源素材的多轨合成、低分辨率预览与可校验 MP4 导出。"""
-import copy
+"""不可变源素材的多轨合成、原分辨率预览与可校验 MP4 导出。"""
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import shutil
@@ -10,6 +10,7 @@ import tempfile
 import time
 
 from app.timeline import normalize_timeline, filter_graph, seconds
+from app.lossless_timeline import preserve_source_timeline
 
 
 def binary(name):
@@ -34,6 +35,22 @@ def command(args, cwd=None):
 
 def probe(path):
     return json.loads(command([binary('ffprobe'), '-v', 'error', '-show_streams', '-show_format', '-of', 'json', str(path)]))
+
+
+def validate_source_frame_timing(path, fps):
+    """平均/名义帧率一致并不能证明 CFR，检查实际帧间隔后才允许严格原片导出。"""
+    data = json.loads(command([binary('ffprobe'), '-v', 'error', '-select_streams', 'v:0',
+                               '-show_entries', 'frame=best_effort_timestamp_time',
+                               '-of', 'json', str(path)]))
+    try:
+        timestamps = [float(frame['best_effort_timestamp_time']) for frame in data['frames']]
+    except (KeyError, TypeError, ValueError):
+        raise ValueError('无法验证原片帧时间戳，已停止导出以避免丢帧') from None
+    if not timestamps or any(not math.isfinite(value) for value in timestamps):
+        raise ValueError('原片缺少有效帧时间戳')
+    if any(abs(current - previous - 1 / fps) > 0.00001
+           for previous, current in zip(timestamps, timestamps[1:])):
+        raise ValueError('原片存在可变帧率或帧时间戳异常，已停止导出，不会自动丢帧或补帧')
 
 
 def validate_timeline(store, pid, timeline):
@@ -61,33 +78,23 @@ def timecode(ms):
     return f'{value // 3600000:02d}:{value // 60000 % 60:02d}:{value // 1000 % 60:02d},{value % 1000:03d}'
 
 
-def preview_timeline(timeline):
-    result = copy.deepcopy(timeline)
-    factor = min(1, max(128 / min(result['width'], result['height']), 720 / max(result['width'], result['height'])))
-    for key in ('width', 'height'):
-        result[key] = max(128, round(result[key] * factor / 2) * 2)
-    for clip in result['clips']:
-        transform = clip['transform']
-        for key in ('x', 'y'):
-            transform[key] = round(transform[key] * factor)
-        for key in ('width', 'height'):
-            transform[key] = max(2, round(transform[key] * factor / 2) * 2)
-    return result
-
-
 def export_timeline(store, pid, timeline, job_id, preview=False):
     errors = validate_timeline(store, pid, timeline)
     if errors:
         raise ValueError('；'.join(errors))
     normalized = normalize_timeline(timeline)
-    render = preview_timeline(normalized) if preview else normalized
+    mode = normalized.get('exportMode', 'source')
+    lossless = not preview and normalized.get('videoEncoding', 'compatible') == 'lossless'
+    if mode not in ('source', 'timeline'):
+        raise ValueError('导出模式无效')
+    render = normalized
     ffmpeg = binary('ffmpeg')
     directory = store.project_dir(pid) / 'exports'
     if not isinstance(job_id, str) or not job_id or Path(job_id).name != job_id or any(c in job_id for c in ('/', '\\', ':', '\x00')):
         raise ValueError('导出标识无效')
     target = directory / (job_id + '.mp4')
     partial = target.with_suffix('.partial.mp4')
-    assets, has_audio = [], []
+    assets, has_audio, video_streams = [], [], []
     for i, clip in enumerate([*render['clips'], *render['audio']]):
         source = store.asset_path(clip['assetId'])
         info = probe(source)
@@ -100,7 +107,12 @@ def export_timeline(store, pid, timeline, job_id, preview=False):
             raise ValueError('素材实际媒体轨道与时间线类型不匹配')
         assets.append(source)
         if is_video:
+            video_streams.append(next(s for s in streams if s['codec_type'] == 'video'))
             has_audio.append(any(s['codec_type'] == 'audio' for s in streams))
+    if mode == 'source':
+        render = preserve_source_timeline(normalized, video_streams)
+        for source in dict.fromkeys(assets[:len(render['clips'])]):
+            validate_source_frame_timing(source, render['fps'])
     with tempfile.TemporaryDirectory(prefix='render-', dir=directory) as tmp:
         temp = Path(tmp)
         graph = filter_graph(render, has_audio)
@@ -114,16 +126,27 @@ def export_timeline(store, pid, timeline, job_id, preview=False):
         args = [ffmpeg, '-y', '-v', 'error']
         for source in assets:
             args += ['-threads', '2', '-i', str(source)]
+        color_args = []
+        if mode == 'source':
+            for field, option in (('color_space', '-colorspace'), ('color_transfer', '-color_trc'),
+                                  ('color_primaries', '-color_primaries')):
+                value = video_streams[0].get(field)
+                if value and value != 'unknown':
+                    color_args += [option, value]
+            color_args += ['-color_range', 'tv']
         args += ['-filter_complex_threads', '1', '-filter_complex', graph, '-map', video_label, '-map', '[audio]',
-                 '-c:v', 'libx264', '-threads', '2', '-preset', 'ultrafast' if preview else 'fast', '-crf', '28' if preview else '20',
+                 '-c:v', 'libx264', '-threads', '2', '-preset', 'fast' if preview else 'medium',
+                 *(['-qp', '0'] if lossless else ['-crf', '16', '-profile:v', 'high', '-tag:v', 'avc1']),
                  '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-t', seconds(render['durationMs']),
-                 '-movflags', '+faststart', str(partial)]
+                 *color_args, '-movflags', '+faststart', str(partial)]
         try:
             command(args, temp)
             result = probe(partial)
             video = next(s for s in result['streams'] if s['codec_type'] == 'video')
             if video['width'] != render['width'] or video['height'] != render['height'] or not any(s['codec_type'] == 'audio' for s in result['streams']):
                 raise ValueError('导出媒体轨道校验失败')
+            if not lossless and (video.get('profile') != 'High' or video.get('pix_fmt') != 'yuv420p'):
+                raise ValueError('兼容视频编码校验失败')
             if abs(float(result['format']['duration']) - render['durationMs'] / 1000) > 1 / render['fps']:
                 raise ValueError('导出时长与时间线不一致（超过一帧）')
             os.replace(partial, target)
@@ -133,6 +156,8 @@ def export_timeline(store, pid, timeline, job_id, preview=False):
             partial.unlink(missing_ok=True)
     digest = hashlib.sha256(target.read_bytes()).hexdigest()
     manifest = {'timeline': normalized, 'render': render, 'preview': preview, 'sha256': digest,
+                'videoEncoding': 'preview-lossy' if preview else ('h264-lossless' if lossless else 'h264-compatible'),
+                'exportMode': mode,
                 'ffmpeg': command([ffmpeg, '-version']).splitlines()[0], 'createdAt': time.time(), 'durationMs': render['durationMs']}
     target.with_suffix('.manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
     return {'path': str(target.relative_to(store.project_dir(pid))), 'durationMs': render['durationMs'], 'sha256': digest, 'preview': preview}

@@ -1,0 +1,40 @@
+import { createRequire } from 'node:module';
+import { mkdir } from 'node:fs/promises';
+import { requireQaSession } from './qa-session.mjs';
+const require = createRequire(new URL('../apps/desktop/package.json', import.meta.url));
+const { chromium, expect } = require('@playwright/test');
+const { url } = await requireQaSession();
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1680, height: 1050 } });
+try {
+  await page.goto(url); await expect(page.locator('.app-shell')).toBeVisible();
+  const asset = await page.evaluate(async () => {
+    const p = await (await fetch('/api/v1/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Asset rename QA' }) })).json();
+    const canvas = document.createElement('canvas'); canvas.width = 32; canvas.height = 32;
+    const blob = await new Promise(resolve => canvas.toBlob(resolve));
+    const body = new FormData(); body.set('projectId', p.id); body.set('file', blob, 'original.png');
+    const asset = await (await fetch('/api/v1/assets/import', { method: 'POST', body })).json();
+    localStorage.setItem('canvas-last-project', p.id); return asset;
+  });
+  await page.reload();
+  await page.locator('.sidebar-tabs button').filter({ hasText: '素材' }).click();
+  await page.getByRole('button', { name: '重命名original.png', exact: true }).click();
+  const input = page.getByLabel('素材名称', { exact: true });
+  await input.fill('discard'); await input.press('Escape');
+  await expect(page.locator('.asset-item strong')).toHaveText('original.png');
+  await page.getByRole('button', { name: '重命名original.png', exact: true }).click();
+  await input.fill('  '); await expect(page.getByRole('button', { name: '保存名称', exact: true })).toBeDisabled();
+  await input.fill('bad/name'); await input.press('Enter');
+  await expect(page.locator('.asset-rename [role="alert"]')).toBeVisible();
+  await input.fill('主角三视图.png'); await input.press('Enter');
+  await expect(page.locator('.asset-item strong')).toHaveText('主角三视图.png');
+  await page.reload();
+  await page.locator('.sidebar-tabs button').filter({ hasText: '素材' }).click();
+  await expect(page.locator('.asset-item strong')).toHaveText('主角三视图.png');
+  await page.getByRole('button', { name: '加入画布', exact: true }).click();
+  await expect(page.getByLabel('锁定素材版本')).toHaveValue(asset.id);
+  await page.getByRole('button', { name: '重命名主角三视图.png', exact: true }).click();
+  await mkdir('.runtime/qa', { recursive: true });
+  await page.screenshot({ path: '.runtime/qa/asset-rename.png' });
+  console.log('PASS: rename, cancel, blank/invalid errors, Enter save, persistence, original asset reference');
+} finally { await browser.close(); }

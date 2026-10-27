@@ -5,52 +5,84 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: windows-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: pwsh
+env:
+  PYTHONUTF8: '1'
+  PYTHONIOENCODING: utf-8
+  UV_PYTHON: '3.12'
+  PYTEST_ADDOPTS: --junitxml=.runtime/ci/pytest.xml
 jobs:
   windows:
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.24.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: pnpm
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v10.3.0
         with:
           enable-cache: true
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install locked dependencies and media tools
-        shell: pwsh
+      - name: Install locked dependencies
         run: |
           pnpm install --frozen-lockfile
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           uv sync --project services/backend --frozen
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          choco install ffmpeg --no-progress -y
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          'C:\ProgramData\chocolatey\bin' >> $env:GITHUB_PATH
+      - name: Install verified FFmpeg distribution
+        run: ./scripts/setup-ci-media.ps1
       - name: Type, syntax, backend and real media validation
         run: pnpm verify
       - name: Package embedded frontend and backend
-        shell: pwsh
         run: ./scripts/package-sidecar.ps1
+      - name: Check release manifest generation before installer build
+        run: python scripts/release.py .runtime/sidecar/canvas-backend.exe --output .runtime/ci/manifest-preflight
       - name: Build Windows installer
         run: pnpm --filter desktop tauri build
       - name: Generate release manifest
-        shell: pwsh
         run: |
-          $installer = (Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe).FullName
-          python scripts/release.py $installer
-      - uses: actions/upload-artifact@v4
+          $installers = @(Get-ChildItem apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe)
+          if ($installers.Count -ne 1) { throw "Expected one installer, found $($installers.Count)" }
+          python scripts/release.py $installers[0].FullName
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $report = Get-Content .runtime/release/manifest.json -Raw | ConvertFrom-Json
+          "### Windows installer" >> $env:GITHUB_STEP_SUMMARY
+          "File: $($report.artifact.name)" >> $env:GITHUB_STEP_SUMMARY
+          "SHA256: $($report.artifact.sha256)" >> $env:GITHUB_STEP_SUMMARY
+          "Signature check: $($report.signature.status)" >> $env:GITHUB_STEP_SUMMARY
+      - name: Upload installer even if metadata collection failed
+        if: ${{ !cancelled() && hashFiles('apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe') != '' }}
+        uses: actions/upload-artifact@v7
         with:
           name: windows-unsigned
+          include-hidden-files: true
+          compression-level: 0
+          retention-days: 14
           path: |
             apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
             .runtime/release/
           if-no-files-found: error
+      - name: Upload validation diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-diagnostics
+          include-hidden-files: true
+          retention-days: 14
+          path: |
+            .runtime/ci/
+            .runtime/pyinstaller/**/warn-*.txt
+          if-no-files-found: warn

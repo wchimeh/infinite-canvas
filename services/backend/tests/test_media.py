@@ -19,7 +19,7 @@ def test_real_five_shot_export(tmp_path):
     project = store.create_project("五镜头导出验收")
     video = store.add_asset(project["id"], source.read_bytes(), "source.mp4")
     audio = store.add_asset(project["id"], voice.read_bytes(), "voice.wav")
-    timeline = {"width": 1080, "height": 1920, "fps": 30,
+    timeline = {"width": 1080, "height": 1920, "fps": 30, "exportMode": "timeline",
                 "clips": [{"assetId": video["id"], "durationMs": 3000, "inMs": 0, "approved": True} for _ in range(5)],
                 "audio": [{"assetId": audio["id"], "durationMs": 15000, "startMs": 0, "gain": 0.2}],
                 "subtitles": [{"text": "雨夜，故事从这里开始。", "startMs": 0, "endMs": 3000}]}

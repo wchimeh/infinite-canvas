@@ -39,6 +39,26 @@ def test_settings_credentials_never_return_secret(client):
     assert client.put('/api/v1/settings', json={'apiKey': 'invalid'}).status_code == 422
 
 
+def test_canvas_preview_preferences_default_and_persist(client):
+    initial = client.get('/api/v1/settings').json()
+    assert initial['canvasHidePreviews'] is True
+    assert initial['canvasPreviewThreshold'] == 50
+    saved = client.put('/api/v1/settings', json={'canvasHidePreviews': False, 'canvasPreviewThreshold': 80})
+    assert saved.status_code == 200
+    loaded = client.get('/api/v1/settings').json()
+    assert loaded['canvasHidePreviews'] is False and loaded['canvasPreviewThreshold'] == 80
+    client.put('/api/v1/settings', json={'canvasHidePreviews': True})
+    assert client.get('/api/v1/settings').json()['canvasPreviewThreshold'] == 80
+
+
+@pytest.mark.parametrize('changes', [
+    {'canvasHidePreviews': 'false'}, {'canvasHidePreviews': 0},
+    *[{'canvasPreviewThreshold': value} for value in [None, True, 9, 101, 50.5, '50']],
+])
+def test_canvas_preview_preferences_reject_invalid_values(client, changes):
+    assert client.put('/api/v1/settings', json=changes).status_code == 422
+
+
 def test_archive_and_template_routes(client):
     project = client.post('/api/v1/projects', json={'name': 'API migration'}).json()
     pid = project['id']

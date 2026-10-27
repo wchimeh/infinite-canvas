@@ -1,14 +1,22 @@
 // 使用独立无个人资料的浏览器，创建独立性能项目，不执行任何生成。
 import { createRequire } from 'node:module';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { requireQaSession } from './qa-session.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(path.join(root, 'apps/desktop/package.json'));
 const { chromium, expect } = require('@playwright/test');
-const { url } = JSON.parse(await readFile(process.env.CANVAS_SESSION_FILE || path.join(root, '.runtime/session.json'), 'utf8'));
+const { url } = await requireQaSession();
 const browser = await chromium.launch({ headless: true, ...(process.env.TEST_BROWSER_PATH ? { executablePath: process.env.TEST_BROWSER_PATH } : {}) });
 const page = await browser.newPage({ viewport: { width: 1500, height: 960 } });
+const cpuRate = Number(process.env.CANVAS_CPU_RATE || 1);
+if (![1, 4, 6].includes(cpuRate)) throw new Error('CANVAS_CPU_RATE must be 1, 4 or 6');
+const cdp = await page.context().newCDPSession(page);
+await cdp.send('Emulation.setCPUThrottlingRate', { rate: cpuRate });
+await cdp.send('Performance.enable');
+const reportName = process.env.CANVAS_PERF_REPORT || 'performance';
+if (!/^[a-z0-9-]+$/.test(reportName)) throw new Error('Invalid report name');
 const errors = [];
 page.on('pageerror', error => errors.push(error.message));
 await page.addInitScript(() => {
@@ -34,10 +42,12 @@ try {
   });
   const started = Date.now();
   await page.reload();
-  await expect(page.locator('.canvas-toolbar .muted')).toContainText('200 节点 · 300 连线');
+  await expect(page.locator('.canvas-toolbar .muted')).toContainText('200 节点 · 300 连线', { timeout: 30000 });
   const warmStartMs = Date.now() - started;
   await page.locator('.react-flow__controls-fitview').click();
   await page.waitForTimeout(400);
+  await page.evaluate(() => { window.qaLongTasks = []; });
+  const metricsBefore = Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map(m => [m.name, m.value]));
   const frameSample = page.evaluate(() => new Promise(resolve => {
     const frames = []; let last = performance.now(), start = last;
     function frame(now) { frames.push(now - last); last = now; if (now - start < 2500) requestAnimationFrame(frame); else resolve({ frames, longTasks: window.qaLongTasks }); }
@@ -50,6 +60,8 @@ try {
   await page.mouse.move(pane.x + pane.width / 2 + 80, pane.y + pane.height / 2 + 30, { steps: 20 });
   await page.mouse.up(); await page.keyboard.up('Space');
   const sample = await frameSample;
+  const metricsAfter = Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map(m => [m.name, m.value]));
+  const workMs = Object.fromEntries(['ScriptDuration', 'LayoutDuration', 'RecalcStyleDuration', 'TaskDuration'].map(name => [name, Math.round((metricsAfter[name] - metricsBefore[name]) * 1000)]));
   const frames = sample.frames.slice(1).sort((a, b) => a - b);
   const fps = 1000 / (frames.reduce((a, b) => a + b, 0) / frames.length);
   await page.getByRole('button', { name: '保存', exact: true }).click();
@@ -58,11 +70,11 @@ try {
   expect(snapshot.nodes).toHaveLength(200); expect(snapshot.edges).toHaveLength(300);
   expect(errors).toEqual([]);
   const report = { measuredAt: new Date().toISOString(), machine: process.platform + '/' + process.arch, browser: browser.version(), projectId: pid,
-    nodes: 200, edges: 300, warmStartMs, averageFps: Number(fps.toFixed(2)), frameP95Ms: Number(frames[Math.floor(frames.length * 0.95)].toFixed(2)),
+    cpuRate, workMs, nodes: 200, edges: 300, warmStartMs, averageFps: Number(fps.toFixed(2)), frameP95Ms: Number(frames[Math.floor(frames.length * 0.95)].toFixed(2)),
     longTaskCount: sample.longTasks.length, longestTaskMs: Math.max(0, ...sample.longTasks.map(task => task.duration)), errors, functional: 'passed',
     targets: { warmStartUnder5s: warmStartMs < 5000, interactiveFpsAtLeast30: fps >= 30 }, note: '本机无头 Chromium 实测；不等同于所有目标机器性能。' };
   await mkdir(path.join(root, '.runtime/qa'), { recursive: true });
-  await writeFile(path.join(root, '.runtime/qa/performance.json'), JSON.stringify(report, null, 2));
-  await page.screenshot({ path: path.join(root, '.runtime/qa/performance.png') });
+  await writeFile(path.join(root, `.runtime/qa/${reportName}.json`), JSON.stringify(report, null, 2));
+  await page.screenshot({ path: path.join(root, `.runtime/qa/${reportName}.png`) });
   console.log(JSON.stringify(report, null, 2));
 } finally { await browser.close(); }

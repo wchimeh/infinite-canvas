@@ -8,7 +8,7 @@
     "typecheck": "pnpm --filter desktop typecheck",
     "lint": "python scripts/check.py && pnpm typecheck",
     "test": "uv run --project services/backend pytest services/backend/tests -q",
-    "verify": "pnpm lint && pnpm build && pnpm test",
+    "verify": "python scripts/verify-media.py && pnpm lint && pnpm build && node --test scripts/qa-session.test.mjs && pnpm --filter desktop exec node --test src/api.test.mjs src/projectLoad.test.mjs src/shotReferences.test.mjs src/upstreamReferences.test.mjs src/imageReferenceSelection.test.mjs src/inputCandidates.test.mjs src/canvasIndexes.test.mjs src/taskRefresh.test.mjs src/timelineLayout.test.mjs && pnpm test",
     "test:browser": "node scripts/smoke.mjs",
     "test:performance": "node scripts/performance.mjs",
     "test:desktop": "node scripts/desktop-smoke.mjs",

@@ -29,6 +29,16 @@ def service(id='alpha', **changes):
             'models': ['small', 'large'], 'defaultModel': 'small', 'enabled': True, **changes}
 
 
+def test_text_transport_settings_are_validated_and_frozen(settings):
+    from app.generation_profiles import resolve_selection
+    settings.save({'textServices': [service(thinkingMode='off', stream=True)]})
+    resolved = resolve_selection(settings.load(), 'script.expand', {'textServiceId': 'alpha'})
+    assert resolved['textThinkingMode'] == 'off' and resolved['textStream'] is True
+    for changes in [{'stream': 'true'}, {'stream': 1}, {'thinkingMode': True}, {'thinkingMode': 'invalid'}]:
+        with pytest.raises(ValueError):
+            settings.save({'textServices': [service(**changes)]})
+
+
 def workflow(id='portrait', **changes):
     return {'id': id, 'name': id, 'kinds': ['image.generate', 'image.variation'], 'version': 1, 'enabled': True,
             'workflowId': '123', 'nodeInfoList': [{'nodeId': '1', 'fieldName': 'steps', 'fieldValue': 20}],
@@ -201,6 +211,28 @@ def test_worker_freezes_text_service_and_model(tmp_path, settings, monkeypatch):
     assert store.task(task['id'])['status'] == 'completed'
 
 
+def test_worker_keeps_transport_options_and_timeout_reason(tmp_path, settings, monkeypatch):
+    settings.save({'textServices': [service(thinkingMode='off', stream=True)]})
+    store, project, worker, task = make_task(tmp_path, settings, 'script.expand', {'textServiceId': 'alpha'})
+    original_key = worker.inputs(task)[2]
+    changed = copy.deepcopy(task)
+    changed['snapshot']['textThinkingMode'] = 'on'
+    assert worker.inputs(changed)[2] != original_key
+    settings.set_key('text-alpha', 'fake')
+    settings.save({'textServices': [service(thinkingMode='on', stream=False)]})
+    observed = []
+    def generate(self, *args, **kwargs):
+        observed.append(kwargs)
+        raise ProviderError('TEXT_READ_TIMEOUT', '等待文本服务内容超时（连续120秒未收到数据）')
+    monkeypatch.setattr(TextProvider, 'generate', generate)
+    worker.mock = False
+    worker.tick()
+    result = store.task(task['id'])
+    assert observed == [{'thinking_mode': 'off', 'stream': True}]
+    assert result['status'] == 'failed' and result['error_code'] == 'TEXT_READ_TIMEOUT'
+    assert '120秒' in result['error'] and not result['retryable']
+
+
 def test_pricing_is_scoped_to_selected_profile():
     rule = {'amount': '0.4', 'unit': 'task', 'currency': 'CNY'}
     text = {'kind': 'script.expand', 'config': {}, 'textServiceId': 'alpha', 'textModel': 'large'}
@@ -277,7 +309,7 @@ def test_workflow_validation_endpoint_is_read_only(settings, tmp_path, monkeypat
 @pytest.mark.parametrize('status,expected', [
     (400, 'PROVIDER_REJECTED'), (401, 'PROVIDER_AUTH'), (403, 'PROVIDER_AUTH'),
     (404, 'MODEL_UNAVAILABLE'), (422, 'PROVIDER_REJECTED'), (429, 'PROVIDER_RATE_LIMIT'),
-    (500, 'TEXT_GENERATION_FAILED'), (200, 'TEXT_GENERATION_FAILED'),
+    (500, 'TEXT_GENERATION_FAILED'), (200, 'TEXT_RESPONSE_INVALID'),
 ])
 def test_text_http_errors_are_classified(settings, monkeypatch, status, expected):
     settings.set_key('text', 'fake')

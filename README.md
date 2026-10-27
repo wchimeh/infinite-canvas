@@ -54,21 +54,35 @@ pnpm build
 pnpm test
 ```
 
-浏览器验收（先保持 `pnpm dev` 或 `python scripts/dev.py --serve` 运行）：
+浏览器验收必须启动独立服务，禁止使用日常 `pnpm dev` 会话。终端一：
 
 ```powershell
 pnpm --filter desktop exec playwright install chromium
-node scripts/smoke.mjs
+pnpm build
+$env:FFMPEG_DIR = '你的 FFmpeg bin 绝对路径'
+uv run --project services/backend python scripts/qa.py
+```
+
+启动器创建独立 `.runtime/qa-*` 数据/设置目录，不读取 `.env` 或日常凭据，并打印会话文件路径。保持终端一运行；终端二使用该路径：
+
+```powershell
+$env:CANVAS_QA = '1'
+$env:CANVAS_SESSION_FILE = '启动器打印的 session.json 绝对路径'
+$env:FFMPEG_DIR = '你的 FFmpeg bin 绝对路径'
+pnpm test:browser
+pnpm test:performance
+node scripts/audit-browser.mjs
 # 也可使用隔离的本机 Chrome 进程，不读取个人浏览器资料：
 $env:TEST_BROWSER_PATH = 'C:/Program Files/Google/Chrome/Application/chrome.exe'
-node scripts/smoke.mjs
 ```
+
+完成后在终端一按 Ctrl+C 停止服务，测试数据保留在对应 QA 目录。缺少隔离标记、清单字段、独立数据/设置路径，或使用 5173 日常端口时，写入脚本直接失败。清单是可信本地启动配置，须使用该启动器生成，不要手工指向日常服务。
 
 媒体验收需将 `FFMPEG_DIR` 设置到当前测试进程环境，然后运行 `pnpm test`。测试会实际合成五镜头 15 秒竖屏 MP4，验证 H.264/AAC、时长、字幕文件和完整解码。未配置 FFmpeg 时该项明确标记跳过；不能据此声称媒体通过。
 
 测试使用独立 Mock Provider 和 HTTP 契约桩，不会发起收费生成。真实云端生成需要本机配置并在 UI 中提交。完整任务和外部验收状态见 [完整开发文档](docs/完整开发文档.md)。
 
-`pnpm verify` 执行语法/类型、前端构建和后端测试；`pnpm lint` 是语法和类型检查，不是代码风格检查。`pnpm test:browser` 验证真实编辑流程；`pnpm test:performance` 测量 200 节点/300 边，报告保存在 `.runtime/qa/`。浏览器检查需要正在运行的隔离开发服务。
+`pnpm verify` 先强制检查 ffmpeg/ffprobe 可执行，再执行语法/类型、前端构建、前端与脚本回归和后端测试；显式错误的 FFMPEG_DIR 会直接失败。`pnpm lint` 是语法和类型检查，不是代码风格检查。`pnpm test:browser` 验证真实编辑流程；`pnpm test:performance` 测量 200 节点/300 边，报告保存在 `.runtime/qa/`。浏览器检查需要上述独立 QA 服务。
 
 ## 设置、迁移与本地模型
 
@@ -147,7 +161,7 @@ ComfyUI 需自行安装模型和节点并启动本机服务（通常 `http://127
 
 桌面壳为 Tauri 2，子进程启动本地服务，窗口加载随机 loopback 端口。关闭桌面应用时终止本地服务；未完成远端任务在租约过期后恢复查询。
 
-需安装 Rust stable、MSVC C++ Build Tools 和 WebView2；FFmpeg 单独安装。
+构建需安装 Rust stable、MSVC C++ Build Tools，并准备 FFmpeg 发行版（bin 下有 ffmpeg.exe、ffprobe.exe，上一级有 LICENSE、README.txt）。
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/package-sidecar.ps1
@@ -156,7 +170,7 @@ pnpm --filter desktop tauri dev
 pnpm --filter desktop tauri build
 ```
 
-先生成 sidecar 后才能运行 Tauri（bundle 配置需要对应目标平台的二进制）。开发壳使用项目虚拟环境；安装包使用 PyInstaller sidecar，不要求终端用户安装 Python。安装版默认使用系统应用数据目录，`CANVAS_DESKTOP_DATA_DIR` 可指定绝对路径作隔离验收。FFmpeg 与 WebView2 是运行条件；本项目不分发模型或签名证书。
+打包前设置 `FFMPEG_DIR` 指向发行版 bin 目录；脚本将工具及许可说明收集到安装包。先生成 sidecar 后才能运行 Tauri（bundle 配置需要对应目标平台的二进制）。开发壳使用项目虚拟环境；安装包使用 PyInstaller sidecar，不要求终端用户安装 Python，并自动使用安装目录 media 中的 FFmpeg（显式设置 FFMPEG_DIR 时以其为准）。安装版默认使用系统应用数据目录，`CANVAS_DESKTOP_DATA_DIR` 可指定绝对路径作隔离验收。WebView2 是运行条件，安装器按需安装；本项目不分发模型或签名证书。
 
 `package-sidecar.ps1` 可独立生成 Windows x64 后端 exe；已验证该 exe 能启动 Worker 并提供内嵌前端。桌面壳/安装包的实际验证情况以开发文档执行记录为准。
 

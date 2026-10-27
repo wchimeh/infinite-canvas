@@ -13,7 +13,7 @@ import uuid
 from app.generation_profiles import validate_profiles, valid_id
 
 ENV_KEYS = {'runninghub': 'RUNNINGHUB_API_KEY', 'text': 'TEXT_API_KEY'}
-DEFAULTS = {'textApiBase': '', 'textModel': '', 'comfyUrl': 'http://127.0.0.1:8188', 'comfyWorkflows': {},
+DEFAULTS = {'canvasHidePreviews': True, 'canvasPreviewThreshold': 50, 'confirmGenerationCost': True, 'textApiBase': '', 'textModel': '', 'comfyUrl': 'http://127.0.0.1:8188', 'comfyWorkflows': {},
             'concurrency': {'image': 2, 'video': 1, 'audio': 1, 'text': 1}, 'pricing': {}, 'textServices': [], 'cloudWorkflows': []}
 
 
@@ -142,6 +142,12 @@ class Settings:
         if not isinstance(data, dict) or not data.keys() <= DEFAULTS.keys():
             raise ValueError('设置包含未知字段或凭据；密钥请使用系统凭据接口')
         validate_profiles(data)
+        if 'confirmGenerationCost' in data and type(data['confirmGenerationCost']) is not bool:
+            raise ValueError('生成费用提示开关必须是布尔值')
+        if 'canvasHidePreviews' in data and type(data['canvasHidePreviews']) is not bool:
+            raise ValueError('缩小时隐藏预览开关必须是布尔值')
+        if 'canvasPreviewThreshold' in data and (type(data['canvasPreviewThreshold']) is not int or not 10 <= data['canvasPreviewThreshold'] <= 100):
+            raise ValueError('隐藏预览的缩放阈值须为10–100的整数百分比')
         for key in ('textApiBase', 'textModel', 'comfyUrl'):
             if key in data and (not isinstance(data[key], str) or len(data[key]) > 2048):
                 raise ValueError('服务地址或模型名称无效')

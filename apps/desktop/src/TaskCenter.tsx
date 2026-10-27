@@ -7,7 +7,7 @@ import { QueueSummary } from './QueueSummary';
 
 function queueOf(task: Task) {
   const kind = task.snapshot.kind;
-  if (kind === 'story.prompt' || kind.startsWith('asset.') || kind.endsWith('.reference') || ('adopted' in task.snapshot && task.snapshot.adopted)) return 'local';
+  if (['story.prompt', 'text.concat', 'shots.select', 'frame.extract', 'audio.extract', 'audio.trim', 'video.trim'].includes(kind) || kind.startsWith('asset.') || kind.endsWith('.reference') || ('adopted' in task.snapshot && task.snapshot.adopted)) return 'local';
   if (kind.startsWith('image.') || kind.startsWith('video.')) return 'media';
   return kind.startsWith('audio.') ? 'audio' : 'text';
 }
@@ -46,7 +46,7 @@ export function TaskCenter({ cancel, retry }: { cancel: (id: string) => void; re
     <div className="task-table-head"><span>节点 / 运行</span><span>状态</span><span>任务信息</span><span>操作</span></div>
     {filtered.map(task => { const node = nodes.find(n => n.id === task.node_id); return <div className="task-row" key={task.id}>
       <span>{node?.data.title || task.node_id.slice(0, 8)}<small>{new Date(task.created_at * 1000).toLocaleString()}</small></span>
-      <span><i className={'status-dot ' + task.status}/>{STATUS[task.status]}{task.reused ? ' · 缓存' : ''}</span><span className="task-error">{taskInformation(task)}</span>
+      <span><i className={'status-dot ' + task.status}/>{task.error_code === 'REMOTE_RECONNECTING' && ['queued', 'running'].includes(task.status) ? '等待自动重连' : STATUS[task.status]}{task.reused ? ' · 缓存' : ''}</span><span className="task-error">{taskInformation(task)}</span>
       <span className="task-actions">{(task.output.text || task.output.assets?.length) && <button onClick={() => setPreviewId(task.id)}>查看结果</button>}
         {node && <button title="选中并定位到画布中的节点" onClick={() => useStudio.setState(s => ({ nodes: s.nodes.map(n => ({ ...n, selected: n.id === node.id })), focusRequest: { nodeId: node.id } }))}>选择节点</button>}
         {['queued', 'running'].includes(task.status) && <button onClick={() => cancel(task.id)}>取消</button>}

@@ -8,7 +8,7 @@ export function ShotSelection({ nodeId }: { nodeId: string }) {
   const source = s.nodes.find(item => item.id === sourceId);
   const task = s.tasks.filter(item => item.node_id === sourceId).sort((a, b) => b.created_at - a.created_at)[0];
   const available = task?.status === 'completed' && source?.data.status !== 'dirty';
-  const shots = available ? task.output.shots || [] : [];
+  const shots = source?.data.config.editedResult?.shots ?? (available ? task.output.shots || [] : []);
   const config = node.data.config;
   const selected = typeof config.shotIndex === 'number' ? shots[config.shotIndex] : undefined;
   const valid = !!selected && JSON.stringify(selected) === JSON.stringify(config.selectedShot)

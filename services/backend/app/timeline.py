@@ -13,6 +13,8 @@ def normalize_timeline(document, allow_empty=False):
     if not isinstance(document, dict):
         raise ValueError('时间线必须是对象')
     result = copy.deepcopy(document)
+    if result.get('videoEncoding', 'compatible') not in ('compatible', 'lossless'):
+        raise ValueError('视频编码仅支持 Windows 兼容或无损')
     for name in ('clips', 'audio', 'subtitles'):
         result.setdefault(name, [])
         if not isinstance(result[name], list) or len(result[name]) > 500:
@@ -95,8 +97,12 @@ def filter_graph(timeline, video_has_audio):
         transform = clip['transform']
         width, height = transform['width'], transform['height']
         offset, length, start = seconds(clip['inMs']), seconds(clip['durationMs']), seconds(clip['startMs'])
-        fit = f'scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}' if transform['fit'] == 'cover' else f'scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2'
-        video = f'[{i}:v]trim=start={offset}:duration={length},setpts=PTS-STARTPTS,setsar=1,fps={fps},{fit},format=rgba,colorchannelmixer=aa={transform["opacity"]}'
+        fit = f'scale={width}:{height}:force_original_aspect_ratio=increase:force_divisible_by=2:flags=lanczos,crop={width}:{height}' if transform['fit'] == 'cover' else f'scale={width}:{height}:force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2'
+        video = f'[{i}:v]trim=start={offset}:duration={length},setpts=PTS-STARTPTS,setsar=1,fps={fps},{fit}'
+        # 普通片段保持 YUV，避免 RGB 往返造成额外色度采样及舍入损失。
+        # 只有透明度和淡入淡出需要 alpha 通道。
+        if transform['opacity'] != 1 or clip['fadeInMs'] or clip['fadeOutMs']:
+            video += f',format=rgba,colorchannelmixer=aa={transform["opacity"]}' if transform['opacity'] != 1 else ',format=yuva420p'
         if clip['fadeInMs']:
             video += f",fade=t=in:st=0:d={seconds(clip['fadeInMs'])}:alpha=1"
         if clip['fadeOutMs']:

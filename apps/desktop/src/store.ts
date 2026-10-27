@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { connectUpstreamReferences } from './upstreamReferences';
+import { selectImageReference } from './imageReferenceSelection';
 import type { Viewport } from '@xyflow/react';
 import type { Asset, CanvasDoc, Config, Definition, StudioEdge, StudioNode, Task } from './types';
 
@@ -15,6 +17,8 @@ type State = Snapshot & {
   add: (kind: string, position?: { x: number; y: number }, config?: Config, title?: string) => string;
   patch: (id: string, data: Partial<StudioNode['data']>) => void;
   connect: (edge: StudioEdge) => string | null;
+  inheritReferenceImages: (id: string) => number;
+  selectReferenceImage: (id: string, assetId: string, checked: boolean) => void;
   duplicate: () => void; remove: () => void; undo: () => void; redo: () => void;
   group: (title?: string) => void; ungroup: () => void;
 };
@@ -39,12 +43,13 @@ function syncShotDuration(nodes: StudioNode[], edges: StudioEdge[]) {
       if (edge.data?.kind === 'sequence' || edge.targetHandle !== 'text') continue;
       const source = next.find(node => node.id === edge.source);
       const target = next.find(node => node.id === edge.target);
-      if (!source || !target || !['prompt.video_expand', 'video.image_to_video'].includes(target.data.kind)) continue;
+      if (!source || !target || !['prompt.video_expand', 'video.image_to_video', 'video.combat'].includes(target.data.kind)) continue;
+      if (['video.image_to_video', 'video.combat'].includes(target.data.kind) && target.data.config.seconds !== undefined && target.data.config.durationSource !== 'upstream') continue;
       const seconds = source.data.kind === 'shots.select' ? (source.data.config.selectedShot?.durationMs || 0) / 1000
         : source.data.kind === 'prompt.video_expand' ? source.data.config.seconds : undefined;
       if (seconds === undefined || seconds < 4 || seconds > 15 || target.data.config.seconds === seconds) continue;
       changed = true;
-      next = next.map(node => node.id === target.id ? { ...node, data: { ...node.data, config: { ...node.data.config, seconds } } } : node);
+      next = next.map(node => node.id === target.id ? { ...node, data: { ...node.data, config: { ...node.data.config, seconds, ...(['video.image_to_video', 'video.combat'].includes(node.data.kind) ? { durationSource: 'upstream' } : {}) } } } : node);
     }
     if (!changed) break;
   }
@@ -68,6 +73,19 @@ export const useStudio = create<State>((set, get) => ({
     const s = get(); s.checkpoint();
     const nodes = s.nodes.map(n => n.id === id ? { ...n, data: { ...n.data, ...data } } : n);
     set({ nodes: syncShotDuration(dirty(nodes, s.edges, [id]), s.edges), edits: s.edits + 1 });
+  },
+  selectReferenceImage: (id, assetId, checked) => {
+    const s = get();
+    const plan = selectImageReference(id, assetId, checked, s.nodes, s.edges, s.assets, s.definitions, s.tasks, () => crypto.randomUUID());
+    s.checkpoint();
+    set({ nodes: dirty(plan.nodes, plan.edges, [id]), edges: plan.edges, edits: s.edits + 1 });
+  },
+  inheritReferenceImages: id => {
+    const s = get();
+    const plan = connectUpstreamReferences(id, s.nodes, s.edges, s.assets, s.definitions, () => crypto.randomUUID());
+    s.checkpoint();
+    set({ nodes: dirty(plan.nodes, plan.edges, [id]), edges: plan.edges, edits: s.edits + 1 });
+    return plan.count;
   },
   connect: edge => {
     const s = get(); const source = s.nodes.find(n => n.id === edge.source), target = s.nodes.find(n => n.id === edge.target);

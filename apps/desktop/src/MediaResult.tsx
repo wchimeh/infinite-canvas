@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { mediaUrl } from './api';
+import { mediaUrl, downloadUrl } from './api';
 import type { Asset } from './types';
 
 export function MediaResult({ asset }: { asset?: Asset }) {
@@ -12,7 +12,7 @@ export function MediaResult({ asset }: { asset?: Asset }) {
   const src = attempt ? `${original}?previewRetry=${attempt}` : original;
   const ready = () => setState('ready'), failed = () => setState('error');
   return <section className="media-result" aria-label={`媒体结果：${asset.name}`}>
-    <div className="media-result-heading"><h3>{asset.name}</h3><a href={original} download={asset.name}>下载原文件</a></div>
+    <div className="media-result-heading"><h3>{asset.name}</h3><a href={downloadUrl(asset.id)} download={asset.name}>下载原文件</a></div>
     {supported && state === 'loading' && <p className="media-result-status" role="status">正在加载预览…</p>}
     {supported && state === 'error' ? <div className="media-result-error" role="alert"><p>预览加载失败，可能是文件暂时不可用或浏览器不支持此格式。可重新加载，或下载原文件查看。</p><button onClick={() => { setState('loading'); setAttempt(value => value + 1); }}>重新加载</button><small>仅重新读取素材，不会重新生成。</small></div> :
       image ? <img key={attempt} src={src} alt={asset.name} onLoad={ready} onError={failed}/> :
